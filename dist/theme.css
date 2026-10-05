@@ -1,0 +1,30 @@
+/* The tokens the builder paints with. Import this once, before your own
+ * @theme block, so your values win:
+ *
+ *   @import "tailwindcss";
+ *   @import "@wyattluber/discord-builder/theme.css";
+ *   @theme { --color-card: #14121f; ... }
+ *
+ * The first group is the usual shadcn/ui palette; most projects already define
+ * it and can drop these lines. The dbx-accent scale is the builder's own
+ * highlight (variables, the active tab, focus borders) and maps to Tailwind's
+ * purple by default - swap the five values for your brand and the editor
+ * follows. Tailwind v4 only generates a utility for a token that exists, so a
+ * missing one renders as no colour at all rather than as a fallback.
+ */
+
+@theme {
+  --color-background: #0b0a14;
+  --color-foreground: #efedf7;
+  --color-card: #14121f;
+  --color-popover: #14121f;
+  --color-border: #393353;
+  --color-muted: #262238;
+  --color-muted-foreground: #9c95c0;
+
+  --color-dbx-accent-200: #e9d5ff;
+  --color-dbx-accent-300: #d8b4fe;
+  --color-dbx-accent-400: #c084fc;
+  --color-dbx-accent-500: #a855f7;
+  --color-dbx-accent-600: #9333ea;
+}
