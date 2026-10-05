@@ -9,7 +9,7 @@ export default defineConfig([
   {
     // ES modules for bundlers and Node; splitting keeps the emoji data in a
     // chunk of its own that the picker loads when it opens
-    entry: { core: "src/core.ts", react: "src/index.ts", runtime: "src/runtime.ts" },
+    entry: { core: "src/core.ts", react: "src/index.ts", emoji: "src/emoji-data.ts", runtime: "src/runtime.ts" },
     format: ["esm"],
     dts: true,
     splitting: true,

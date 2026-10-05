@@ -8,6 +8,9 @@
 export { DiscordMessageBuilder } from "./DiscordMessageBuilder";
 export type { DiscordMessageBuilderProps } from "./DiscordMessageBuilder";
 export { DiscordPreview, MessageComponents } from "./DiscordPreview";
+// Discord-flavoured markdown as the preview draws it, for hosts that show
+// message text elsewhere (a channel view, a report)
+export { Markdown, previewVars, variablesToMap, type Mentions, type PreviewVars } from "./markdown";
 export type { UploadImageFn, UploadFileFn } from "./fields";
 // Reusable pieces for hosts that want a picker outside the builder
 export { EmojiGrid, Popover } from "./fields";

@@ -3,8 +3,10 @@
 // server emoji are handled separately (searched by their name).
 //
 // The dataset behind this file weighs more than the rest of the builder, so
-// nothing imports it statically: the picker loads it with import() when it
-// opens, and the bundler keeps it in a chunk of its own.
+// the editor never imports it statically: the picker loads it with import()
+// when it opens, and the bundler keeps it in a chunk of its own. A host that
+// wants emoji search outside the builder (a chat composer) imports the
+// `emoji` entry, which is this file.
 
 import emojiData from "unicode-emoji-json";
 
@@ -52,3 +54,20 @@ export function searchEmojis(query: string, limit = 240): UnicodeEmoji[] {
   return out;
 }
 
+/**
+ * Matches a typed :shortcode: fragment, Discord-style, prefix hits first.
+ * `query` is the text after the colon.
+ */
+export function searchShortcodes(query: string, limit = 8): UnicodeEmoji[] {
+  const q = query.trim().toLowerCase().replace(/:/g, "");
+  if (!q) return [];
+  const starts: UnicodeEmoji[] = [];
+  const contains: UnicodeEmoji[] = [];
+  for (const e of ALL_EMOJIS) {
+    if (!e.shortcode) continue;
+    if (e.shortcode.startsWith(q)) starts.push(e);
+    else if (e.shortcode.includes(q)) contains.push(e);
+    if (starts.length >= limit) break;
+  }
+  return [...starts, ...contains].slice(0, limit);
+}

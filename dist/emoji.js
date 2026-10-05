@@ -130,8 +130,22 @@ function searchEmojis(query, limit = 240) {
   }
   return out;
 }
+function searchShortcodes(query, limit = 8) {
+  const q = query.trim().toLowerCase().replace(/:/g, "");
+  if (!q) return [];
+  const starts = [];
+  const contains = [];
+  for (const e of ALL_EMOJIS) {
+    if (!e.shortcode) continue;
+    if (e.shortcode.startsWith(q)) starts.push(e);
+    else if (e.shortcode.includes(q)) contains.push(e);
+    if (starts.length >= limit) break;
+  }
+  return [...starts, ...contains].slice(0, limit);
+}
 export {
   ALL_EMOJIS,
   COMMON_EMOJIS,
-  searchEmojis
+  searchEmojis,
+  searchShortcodes
 };

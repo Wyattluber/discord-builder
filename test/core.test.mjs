@@ -53,3 +53,20 @@ test("merging variable lists keeps the first entry per name", () => {
   assert.equal(merged.filter((v) => v.name === mine[0].name).length, 1);
   assert.equal(merged.find((v) => v.name === mine[0].name).sample, "mine");
 });
+
+// The emoji entry imports a JSON package, which Node only loads through a
+// bundler; esbuild stands in for the host's here
+async function bundledEmoji() {
+  const { build } = await import("esbuild");
+  const out = await build({ entryPoints: ["dist/emoji.js"], bundle: true, format: "esm", platform: "node", write: false });
+  return import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
+}
+
+test("emoji search finds by keyword and by shortcode prefix", async () => {
+  const { searchEmojis, searchShortcodes } = await bundledEmoji();
+  assert.ok(searchEmojis("cat").length > 0);
+  const hits = searchShortcodes(":smil");
+  assert.ok(hits.length > 0 && hits.length <= 8);
+  assert.ok(hits[0].shortcode.startsWith("smil"));
+  assert.deepEqual(searchShortcodes(""), []);
+});

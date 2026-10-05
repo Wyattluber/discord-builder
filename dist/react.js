@@ -237,7 +237,7 @@ var emojiSearch = null;
 var emojiSearchLoading = null;
 function loadEmojiSearch() {
   if (emojiSearch) return Promise.resolve(emojiSearch);
-  emojiSearchLoading ??= import("./emoji-data-UGIFRFD7.js").then((m) => emojiSearch = m.searchEmojis);
+  emojiSearchLoading ??= import("./emoji.js").then((m) => emojiSearch = m.searchEmojis);
   return emojiSearchLoading;
 }
 function FieldLabel({ children }) {
@@ -1939,6 +1939,7 @@ export {
   IS_COMPONENTS_V2,
   Input,
   LIMITS,
+  Markdown,
   MessageComponents,
   Modal,
   PERCENT_PLACEHOLDERS,
@@ -1953,11 +1954,13 @@ export {
   makeBlock,
   makeContainer,
   mergeVariables,
+  previewVars,
   serialize,
   serializeJson,
   startingMessage,
   substituteVariables,
   validate,
   variablePattern,
+  variablesToMap,
   wrapVariable
 };

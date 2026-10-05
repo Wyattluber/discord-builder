@@ -1,5 +1,5 @@
 import * as react from 'react';
-import { ReactNode, ButtonHTMLAttributes, InputHTMLAttributes, TextareaHTMLAttributes, ComponentType } from 'react';
+import react__default, { ReactNode, ButtonHTMLAttributes, InputHTMLAttributes, TextareaHTMLAttributes, ComponentType } from 'react';
 import { ButtonActionData, TemplateVariable, MessageModel, PlaceholderSyntax } from './core.js';
 export { ButtonAction, ButtonActionType, ButtonNode, CLICKER_VARIABLES, ContainerChild, ContainerNode, DISCORD_VARIABLES, IS_COMPONENTS_V2, LIMITS, PERCENT_PLACEHOLDERS, RootNode, SerializedMessage, ValidationIssue, applyVariableSamples, deserialize, emptyMessage, makeBlock, makeContainer, mergeVariables, serialize, serializeJson, startingMessage, substituteVariables, validate, variablePattern, wrapVariable } from './core.js';
 
@@ -153,11 +153,29 @@ interface DiscordMessageBuilderProps {
 }
 declare function DiscordMessageBuilder({ value, onChange, variables, syntax, sampleOverrides, onUploadImage, onUploadFile, botName, botAvatar, watermark, integrations, className }: DiscordMessageBuilderProps): react.JSX.Element;
 
+type VarMap = Record<string, string>;
+/**
+ * What the preview needs to resolve variables: the sample values plus the
+ * syntax they are written in. Carried as one object so every renderer below
+ * passes it along unchanged.
+ */
+interface PreviewVars {
+    values: VarMap;
+    syntax: PlaceholderSyntax;
+}
 interface Mentions {
     users?: Record<string, string>;
     roles?: Record<string, string>;
     channels?: Record<string, string>;
 }
+declare function variablesToMap(vars?: TemplateVariable[], syntax?: PlaceholderSyntax): VarMap;
+/** Sample values plus syntax, ready to hand to the renderers below. */
+declare function previewVars(vars?: TemplateVariable[], syntax?: PlaceholderSyntax): PreviewVars;
+declare function Markdown({ text, vars, mentions }: {
+    text: string;
+    vars: PreviewVars;
+    mentions?: Mentions;
+}): react__default.JSX.Element;
 
 declare function MessageComponents({ model, variables, mentions, syntax }: {
     model: MessageModel;
@@ -179,4 +197,4 @@ declare function DiscordPreview({ model, variables, mentions, botName, botAvatar
     className?: string;
 }): react.JSX.Element;
 
-export { type ActionEditorProps, BuilderContext, type BuilderIntegrations, Button, ButtonActionData, type ChannelLite, DiscordActionEditor, DiscordMessageBuilder, type DiscordMessageBuilderProps, DiscordPreview, EmojiGrid, type EmojiLite, Input, type MediaAsset, type MediaLibrary, MessageComponents, MessageModel, Modal, type ModalProps, PlaceholderSyntax, Popover, type SavedButtonAction, Skeleton, Switch, SyntaxContext, TemplateVariable, Textarea, type UploadFileFn, type UploadImageFn, type UserLite };
+export { type ActionEditorProps, BuilderContext, type BuilderIntegrations, Button, ButtonActionData, type ChannelLite, DiscordActionEditor, DiscordMessageBuilder, type DiscordMessageBuilderProps, DiscordPreview, EmojiGrid, type EmojiLite, Input, Markdown, type MediaAsset, type MediaLibrary, type Mentions, MessageComponents, MessageModel, Modal, type ModalProps, PlaceholderSyntax, Popover, type PreviewVars, type SavedButtonAction, Skeleton, Switch, SyntaxContext, TemplateVariable, Textarea, type UploadFileFn, type UploadImageFn, type UserLite, previewVars, variablesToMap };

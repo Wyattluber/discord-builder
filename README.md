@@ -11,6 +11,7 @@ dashboard without a bot does not pull anything it cannot use:
 | Import | What it is | Needs |
 | --- | --- | --- |
 | `@wyattluber/discord-builder/react` | the editor and the preview | React 18 or 19, Tailwind v4, `lucide-react`, `unicode-emoji-json` |
+| `@wyattluber/discord-builder/emoji` | unicode emoji search by keyword and by `:shortcode:`, for a composer outside the builder | `unicode-emoji-json` |
 | `@wyattluber/discord-builder/core` | model, building blocks, `serialize`, `deserialize`, placeholder syntax, variable presets | nothing |
 | `@wyattluber/discord-builder/runtime` | fill in variables, drop what did not resolve, media as attachments, send and edit over REST | nothing (ESM and `require()`) |
 
@@ -19,7 +20,7 @@ dashboard without a bot does not pull anything it cannot use:
 Releases are git tags; `dist/` is committed, so nothing is built on install.
 
 ```sh
-npm install github:Wyattluber/discord-builder#v1.0.0
+npm install github:Wyattluber/discord-builder#v1.1.0
 ```
 
 ## In a dashboard
