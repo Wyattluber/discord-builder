@@ -33,14 +33,14 @@ import {
 } from "./chunk-S64MESBS.js";
 
 // src/DiscordMessageBuilder.tsx
-import { useMemo, useRef as useRef3, useState as useState5 } from "react";
+import { useMemo, useRef as useRef4, useState as useState5 } from "react";
 import { Percent as Percent2 } from "lucide-react";
 
 // src/BlockBody.tsx
 import { Plus, Trash2 as Trash22 } from "lucide-react";
 
 // src/ui.tsx
-import { forwardRef, useEffect } from "react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { jsx, jsxs } from "react/jsx-runtime";
@@ -74,8 +74,41 @@ var Input = forwardRef(
   ({ className = "", ...props }, ref) => /* @__PURE__ */ jsx("input", { ref, className: `flex h-9 px-3 py-1 ${FIELD_CLS} ${className}`, ...props })
 );
 Input.displayName = "Input";
+var useBrowserLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 var Textarea = forwardRef(
-  ({ className = "", ...props }, ref) => /* @__PURE__ */ jsx("textarea", { ref, className: `flex min-h-16 px-3 py-2 ${FIELD_CLS} ${className}`, ...props })
+  ({ className = "", ...props }, ref) => {
+    const inner = useRef(null);
+    const setRefs = useCallback((el) => {
+      inner.current = el;
+      if (typeof ref === "function") ref(el);
+      else if (ref) ref.current = el;
+    }, [ref]);
+    const fit = useCallback(() => {
+      const el = inner.current;
+      if (!el) return;
+      const scrolled = [];
+      for (let p = el.parentElement; p; p = p.parentElement) if (p.scrollTop) scrolled.push([p, p.scrollTop]);
+      const pageY = window.scrollY;
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+      for (const [p, top] of scrolled) p.scrollTop = top;
+      if (window.scrollY !== pageY) window.scrollTo(window.scrollX, pageY);
+    }, []);
+    useBrowserLayoutEffect(fit, [fit, props.value]);
+    useEffect(() => {
+      const el = inner.current;
+      if (!el) return;
+      let width = el.clientWidth;
+      const ro = new ResizeObserver(() => {
+        if (el.clientWidth === width) return;
+        width = el.clientWidth;
+        fit();
+      });
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, [fit]);
+    return /* @__PURE__ */ jsx("textarea", { ref: setRefs, className: `flex min-h-16 resize-none overflow-hidden px-3 py-2 ${FIELD_CLS} ${className}`, ...props });
+  }
 );
 Textarea.displayName = "Textarea";
 function Switch({ checked, onCheckedChange, disabled, className = "" }) {
@@ -154,12 +187,11 @@ var useBuilderIntegrations = () => useContext(BuilderContext);
 var SyntaxContext = createContext(PERCENT_PLACEHOLDERS);
 var useSyntax = () => useContext(SyntaxContext);
 var PaletteContext = createContext({ open: () => {
-}, aim: () => {
 } });
 var usePalette = () => useContext(PaletteContext);
 
 // src/fields.tsx
-import { useEffect as useEffect3, useRef, useState as useState2 } from "react";
+import { useEffect as useEffect3, useRef as useRef2, useState as useState2 } from "react";
 import { AtSign, Bold, Hash, Heading, Image as ImageIcon, Italic, List, Loader2 as Loader22, Paperclip, Percent, Smile, Strikethrough, Upload } from "lucide-react";
 
 // src/MediaPicker.tsx
@@ -249,7 +281,7 @@ function Popover({
   align = "end"
 }) {
   const [open, setOpen] = useState2(false);
-  const ref = useRef(null);
+  const ref = useRef2(null);
   useEffect3(() => {
     if (!open) return;
     const onDoc = (e) => {
@@ -400,7 +432,7 @@ function MarkdownField({
   max = 4e3,
   placeholder
 }) {
-  const ref = useRef(null);
+  const ref = useRef2(null);
   const { channels, searchUsers } = useBuilderIntegrations();
   const palette = usePalette();
   const syntax = useSyntax();
@@ -499,8 +531,8 @@ function MarkdownField({
         ] })
       ] }),
       /* @__PURE__ */ jsxs3("div", { className: "flex flex-wrap items-center justify-end gap-0.5", children: [
-        variables && variables.length > 0 && // Opens the palette next to the preview, aimed at this field
-        /* @__PURE__ */ jsx3(ToolbarButton, { title: "Variables", onClick: () => palette.open(insert), children: /* @__PURE__ */ jsx3(Percent, { className: "h-3.5 w-3.5" }) }),
+        variables && variables.length > 0 && // Opens the palette next to the preview
+        /* @__PURE__ */ jsx3(ToolbarButton, { title: "Variables", onClick: palette.open, children: /* @__PURE__ */ jsx3(Percent, { className: "h-3.5 w-3.5" }) }),
         /* @__PURE__ */ jsx3(Popover, { trigger: /* @__PURE__ */ jsx3(ToolbarButton, { title: "Insert emoji", onClick: () => {
         }, children: /* @__PURE__ */ jsx3(Smile, { className: "h-3.5 w-3.5" }) }), children: (close) => /* @__PURE__ */ jsx3(EmojiGrid, { onPick: (e) => {
           insert(e);
@@ -539,7 +571,6 @@ function MarkdownField({
           },
           onKeyDown,
           onBlur: () => setAc(null),
-          onFocus: () => palette.aim(insert),
           onClick: (e) => refreshAutocomplete(value, e.target.selectionStart ?? 0)
         }
       ),
@@ -614,7 +645,7 @@ function ImageField({
   onUpload,
   placeholder
 }) {
-  const inputRef = useRef(null);
+  const inputRef = useRef2(null);
   const [busy, setBusy] = useState2(false);
   const [error, setError] = useState2(null);
   const [pickerOpen, setPickerOpen] = useState2(false);
@@ -675,7 +706,7 @@ function FileField({
   onUpload,
   placeholder
 }) {
-  const inputRef = useRef(null);
+  const inputRef = useRef2(null);
   const [busy, setBusy] = useState2(false);
   const [error, setError] = useState2(null);
   async function handleFile(file) {
@@ -1064,19 +1095,14 @@ function groupVariables(vars) {
   return order.map((g) => [g, map.get(g)]);
 }
 var isImage = (name) => /avatar|icon|image/i.test(name);
-function VariablePalette({ variables, hasTarget, onPick, onClose }) {
+function VariablePalette({ variables, onClose }) {
   const syntax = useSyntax();
   const [q, setQ] = useState3("");
   const [copied, setCopied] = useState3(null);
   const query = q.trim().toLowerCase();
   const filtered = query ? variables.filter((v) => v.name.toLowerCase().includes(query) || (v.description ?? "").toLowerCase().includes(query)) : variables;
   const pick = (v) => {
-    const placeholder = wrapVariable(v.name, syntax);
-    if (hasTarget) {
-      onPick(placeholder);
-      return;
-    }
-    navigator.clipboard?.writeText(placeholder).catch(() => {
+    navigator.clipboard?.writeText(wrapVariable(v.name, syntax)).catch(() => {
     });
     setCopied(v.name);
     setTimeout(() => setCopied((c) => c === v.name ? null : c), 1200);
@@ -1084,7 +1110,7 @@ function VariablePalette({ variables, hasTarget, onPick, onClose }) {
   return /* @__PURE__ */ jsxs6("div", { className: "overflow-hidden rounded-lg border border-border/60 bg-card", children: [
     /* @__PURE__ */ jsxs6("div", { className: "flex items-center gap-2 border-b border-border/40 px-3 py-2", children: [
       /* @__PURE__ */ jsx6("span", { className: "text-xs font-semibold uppercase tracking-wide text-muted-foreground", children: "Variables" }),
-      /* @__PURE__ */ jsx6("span", { className: "text-[11px] text-muted-foreground/70", children: hasTarget ? "Click to insert" : "Click to copy" }),
+      /* @__PURE__ */ jsx6("span", { className: "text-[11px] text-muted-foreground/70", children: "Click to copy" }),
       /* @__PURE__ */ jsx6("button", { type: "button", onClick: onClose, "aria-label": "Close", className: "ml-auto rounded p-1 text-muted-foreground hover:bg-muted/50 hover:text-foreground", children: /* @__PURE__ */ jsx6(X2, { className: "h-3.5 w-3.5" }) })
     ] }),
     /* @__PURE__ */ jsx6("div", { className: "px-3 pt-2", children: /* @__PURE__ */ jsx6(
@@ -1130,7 +1156,7 @@ function VariablePalette({ variables, hasTarget, onPick, onClose }) {
 }
 
 // src/BlockCard.tsx
-import { useRef as useRef2 } from "react";
+import { useRef as useRef3 } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Trash2 as Trash23 } from "lucide-react";
 import { Fragment as Fragment4, jsx as jsx7, jsxs as jsxs7 } from "react/jsx-runtime";
 function BlockCard({
@@ -1148,7 +1174,7 @@ function BlockCard({
   children,
   headerExtra
 }) {
-  const cardRef = useRef2(null);
+  const cardRef = useRef3(null);
   const dragEnabled = !!drag && !compact;
   const iconBtn = compact ? "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded" : "inline-flex shrink-0 items-center justify-center rounded p-1";
   return /* @__PURE__ */ jsxs7(
@@ -1640,6 +1666,34 @@ function useMediaQuery(query) {
 function useIsCompact() {
   return useMediaQuery("(max-width: 1023px)");
 }
+function scrollParent(el) {
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const { overflowY } = getComputedStyle(p);
+    if (overflowY === "auto" || overflowY === "scroll") return p;
+  }
+  return null;
+}
+function useVisibleHeight(ref, enabled, inset = 32) {
+  const [height, setHeight] = useState4(null);
+  useEffect4(() => {
+    const el = ref.current;
+    if (!enabled || !el) {
+      setHeight(null);
+      return;
+    }
+    const scroller = scrollParent(el);
+    const measure = () => setHeight(Math.max(240, (scroller?.clientHeight ?? window.innerHeight) - inset));
+    measure();
+    const ro = scroller ? new ResizeObserver(measure) : null;
+    ro?.observe(scroller);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [ref, enabled, inset]);
+  return height;
+}
 
 // src/DiscordMessageBuilder.tsx
 import { jsx as jsx11, jsxs as jsxs11 } from "react/jsx-runtime";
@@ -1680,19 +1734,9 @@ function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PL
   const compact = useIsCompact();
   const [pane, setPane] = useState5("editor");
   const [paletteOpen, setPaletteOpen] = useState5(false);
-  const paletteTarget = useRef3(null);
-  const [hasTarget, setHasTarget] = useState5(false);
-  const paletteApi = useMemo(() => ({
-    open: (insert) => {
-      paletteTarget.current = insert;
-      setHasTarget(true);
-      setPaletteOpen(true);
-    },
-    aim: (insert) => {
-      paletteTarget.current = insert;
-      setHasTarget(true);
-    }
-  }), []);
+  const paletteApi = useMemo(() => ({ open: () => setPaletteOpen(true) }), []);
+  const previewRef = useRef4(null);
+  const previewMax = useVisibleHeight(previewRef, !compact);
   const allVariables = useMemo(
     () => applyVariableSamples(
       mergeVariables(variables).map((v) => ({ ...v, group: v.group ?? "This message" })),
@@ -1867,63 +1911,55 @@ function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PL
     )) }),
     /* @__PURE__ */ jsxs11("div", { className: "grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]", children: [
       /* @__PURE__ */ jsxs11("div", { className: showEditor ? "space-y-3" : "hidden", children: [
-        compact && paletteOpen && /* @__PURE__ */ jsx11(
-          VariablePalette,
-          {
-            variables: allVariables,
-            hasTarget,
-            onPick: (t) => paletteTarget.current?.(t),
-            onClose: () => setPaletteOpen(false)
-          }
-        ),
+        compact && paletteOpen && /* @__PURE__ */ jsx11(VariablePalette, { variables: allVariables, onClose: () => setPaletteOpen(false) }),
         /* @__PURE__ */ jsxs11("div", { className: "divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60 bg-card", children: [
           value.components.map((node) => renderBlock(node, ROOT_ZONE)),
           value.components.length === 0 && /* @__PURE__ */ jsx11("p", { className: "px-4 py-6 text-center text-sm text-muted-foreground", children: "No blocks yet. Add one below." })
         ] }),
         /* @__PURE__ */ jsx11(AddComponentCards, { kinds: ROOT_BLOCK_KINDS, onAdd: addRoot })
       ] }),
-      /* @__PURE__ */ jsxs11("div", { className: `space-y-2 lg:sticky lg:top-4 lg:self-start ${showPreview ? "" : "hidden"}`, children: [
-        !compact && paletteOpen && /* @__PURE__ */ jsx11(
-          VariablePalette,
-          {
-            variables: allVariables,
-            hasTarget,
-            onPick: (t) => paletteTarget.current?.(t),
-            onClose: () => setPaletteOpen(false)
-          }
-        ),
-        /* @__PURE__ */ jsxs11("div", { className: "flex items-center justify-between", children: [
-          /* @__PURE__ */ jsx11("span", { className: "text-xs font-semibold uppercase tracking-wide text-muted-foreground", children: "Preview" }),
-          /* @__PURE__ */ jsxs11("span", { className: "flex items-center gap-3 text-xs text-muted-foreground", children: [
-            !paletteOpen && allVariables.length > 0 && /* @__PURE__ */ jsxs11("button", { type: "button", onClick: () => setPaletteOpen(true), className: "flex items-center gap-1 text-dbx-accent-300 hover:text-dbx-accent-200", children: [
-              /* @__PURE__ */ jsx11(Percent2, { className: "h-3 w-3" }),
-              " Variables"
+      /* @__PURE__ */ jsxs11(
+        "div",
+        {
+          ref: previewRef,
+          style: previewMax ? { maxHeight: previewMax } : void 0,
+          className: `space-y-2 lg:sticky lg:top-4 lg:self-start lg:overflow-y-auto lg:overscroll-contain ${showPreview ? "" : "hidden"}`,
+          children: [
+            !compact && paletteOpen && /* @__PURE__ */ jsx11(VariablePalette, { variables: allVariables, onClose: () => setPaletteOpen(false) }),
+            /* @__PURE__ */ jsxs11("div", { className: "flex items-center justify-between", children: [
+              /* @__PURE__ */ jsx11("span", { className: "text-xs font-semibold uppercase tracking-wide text-muted-foreground", children: "Preview" }),
+              /* @__PURE__ */ jsxs11("span", { className: "flex items-center gap-3 text-xs text-muted-foreground", children: [
+                !paletteOpen && allVariables.length > 0 && /* @__PURE__ */ jsxs11("button", { type: "button", onClick: () => setPaletteOpen(true), className: "flex items-center gap-1 text-dbx-accent-300 hover:text-dbx-accent-200", children: [
+                  /* @__PURE__ */ jsx11(Percent2, { className: "h-3 w-3" }),
+                  " Variables"
+                ] }),
+                /* @__PURE__ */ jsxs11("span", { className: total > LIMITS.totalComponents ? "text-red-400" : "", children: [
+                  total,
+                  " / ",
+                  LIMITS.totalComponents,
+                  " components"
+                ] })
+              ] })
             ] }),
-            /* @__PURE__ */ jsxs11("span", { className: total > LIMITS.totalComponents ? "text-red-400" : "", children: [
-              total,
-              " / ",
-              LIMITS.totalComponents,
-              " components"
+            /* @__PURE__ */ jsx11(DiscordPreview, { model: value, variables: allVariables, syntax, mentions: previewMentions, botName, botAvatar, watermark }),
+            /* @__PURE__ */ jsx11("p", { className: "text-[11px] leading-snug text-muted-foreground/70", children: "Discord may show the message slightly differently on some devices." }),
+            (errors.length > 0 || warnings.length > 0) && /* @__PURE__ */ jsxs11("div", { className: "space-y-1 rounded-lg border border-border/50 bg-card p-2 text-xs", children: [
+              errors.map((e, i) => /* @__PURE__ */ jsxs11("div", { className: "text-red-400", children: [
+                "\u25CF ",
+                e.path,
+                ": ",
+                e.message
+              ] }, `e${i}`)),
+              warnings.map((w, i) => /* @__PURE__ */ jsxs11("div", { className: "text-amber-400", children: [
+                "\u25CF ",
+                w.path,
+                ": ",
+                w.message
+              ] }, `w${i}`))
             ] })
-          ] })
-        ] }),
-        /* @__PURE__ */ jsx11(DiscordPreview, { model: value, variables: allVariables, syntax, mentions: previewMentions, botName, botAvatar, watermark }),
-        /* @__PURE__ */ jsx11("p", { className: "text-[11px] leading-snug text-muted-foreground/70", children: "Discord may show the message slightly differently on some devices." }),
-        (errors.length > 0 || warnings.length > 0) && /* @__PURE__ */ jsxs11("div", { className: "space-y-1 rounded-lg border border-border/50 bg-card p-2 text-xs", children: [
-          errors.map((e, i) => /* @__PURE__ */ jsxs11("div", { className: "text-red-400", children: [
-            "\u25CF ",
-            e.path,
-            ": ",
-            e.message
-          ] }, `e${i}`)),
-          warnings.map((w, i) => /* @__PURE__ */ jsxs11("div", { className: "text-amber-400", children: [
-            "\u25CF ",
-            w.path,
-            ": ",
-            w.message
-          ] }, `w${i}`))
-        ] })
-      ] })
+          ]
+        }
+      )
     ] })
   ] }) }) }) });
 }

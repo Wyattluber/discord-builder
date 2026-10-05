@@ -361,8 +361,8 @@ export function MarkdownField({
         </FieldLabel>
         <div className="flex flex-wrap items-center justify-end gap-0.5">
           {variables && variables.length > 0 && (
-            // Opens the palette next to the preview, aimed at this field
-            <ToolbarButton title="Variables" onClick={() => palette.open(insert)}><Percent className="h-3.5 w-3.5" /></ToolbarButton>
+            // Opens the palette next to the preview
+            <ToolbarButton title="Variables" onClick={palette.open}><Percent className="h-3.5 w-3.5" /></ToolbarButton>
           )}
           <Popover trigger={<ToolbarButton title="Insert emoji" onClick={() => {}}><Smile className="h-3.5 w-3.5" /></ToolbarButton>}>
             {(close) => <EmojiGrid onPick={(e) => { insert(e); close(); }} />}
@@ -402,7 +402,6 @@ export function MarkdownField({
           }}
           onKeyDown={onKeyDown}
           onBlur={() => setAc(null)}
-          onFocus={() => palette.aim(insert)}
           onClick={(e) => refreshAutocomplete(value, (e.target as HTMLTextAreaElement).selectionStart ?? 0)}
         />
         {ac && acMatches.length > 0 && (

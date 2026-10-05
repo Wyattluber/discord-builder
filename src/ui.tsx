@@ -5,7 +5,7 @@
 // the integrations (the only one where behaviour, not looks, differs) and can
 // restyle the rest through those tokens.
 
-import { forwardRef, useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
@@ -53,10 +53,56 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
 );
 Input.displayName = "Input";
 
+// Before paint in the browser, so a field never shows a frame at the old
+// height; on the server there is nothing to measure.
+const useBrowserLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+/**
+ * Grows and shrinks with its text: never below `rows`, never with a scrollbar
+ * of its own, so there is no resize handle to drag. Widths change the wrap,
+ * so a resize measures again.
+ */
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
-  ({ className = "", ...props }, ref) => (
-    <textarea ref={ref} className={`flex min-h-16 px-3 py-2 ${FIELD_CLS} ${className}`} {...props} />
-  ),
+  ({ className = "", ...props }, ref) => {
+    const inner = useRef<HTMLTextAreaElement | null>(null);
+    const setRefs = useCallback((el: HTMLTextAreaElement | null) => {
+      inner.current = el;
+      if (typeof ref === "function") ref(el);
+      else if (ref) ref.current = el;
+    }, [ref]);
+
+    const fit = useCallback(() => {
+      const el = inner.current;
+      if (!el) return;
+      // Collapsing the field to measure it shortens the page for a moment,
+      // which would pull whatever scrolls around it back up.
+      const scrolled: [HTMLElement, number][] = [];
+      for (let p = el.parentElement; p; p = p.parentElement) if (p.scrollTop) scrolled.push([p, p.scrollTop]);
+      const pageY = window.scrollY;
+      el.style.height = "auto";
+      // scrollHeight leaves out the border, which border-box sizing counts
+      el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+      for (const [p, top] of scrolled) p.scrollTop = top;
+      if (window.scrollY !== pageY) window.scrollTo(window.scrollX, pageY);
+    }, []);
+
+    useBrowserLayoutEffect(fit, [fit, props.value]);
+
+    useEffect(() => {
+      const el = inner.current;
+      if (!el) return;
+      let width = el.clientWidth;
+      const ro = new ResizeObserver(() => {
+        if (el.clientWidth === width) return;
+        width = el.clientWidth;
+        fit();
+      });
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, [fit]);
+
+    return <textarea ref={setRefs} className={`flex min-h-16 resize-none overflow-hidden px-3 py-2 ${FIELD_CLS} ${className}`} {...props} />;
+  },
 );
 Textarea.displayName = "Textarea";
 

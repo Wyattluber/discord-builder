@@ -33,6 +33,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 declare const Button: react.ForwardRefExoticComponent<ButtonProps & react.RefAttributes<HTMLButtonElement>>;
 declare const Input: react.ForwardRefExoticComponent<InputHTMLAttributes<HTMLInputElement> & react.RefAttributes<HTMLInputElement>>;
+/**
+ * Grows and shrinks with its text: never below `rows`, never with a scrollbar
+ * of its own, so there is no resize handle to drag. Widths change the wrap,
+ * so a resize measures again.
+ */
 declare const Textarea: react.ForwardRefExoticComponent<TextareaHTMLAttributes<HTMLTextAreaElement> & react.RefAttributes<HTMLTextAreaElement>>;
 declare function Switch({ checked, onCheckedChange, disabled, className }: {
     checked: boolean;

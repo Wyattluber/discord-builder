@@ -71,15 +71,11 @@ export const useSyntax = () => useContext(SyntaxContext);
 
 /**
  * The variable palette: one panel next to the preview that lists every
- * %variable% with its live value. A markdown field hands the palette its
- * insert function when the field is focused or its % button is pressed, so
- * a click in the palette lands in the right place.
+ * %variable% with its live value. A markdown field's % button opens it; a
+ * click there copies the placeholder and leaves every field as it is.
  */
 export interface PaletteApi {
-  /** Open the palette and aim it at this field. */
-  open: (insert: (text: string) => void) => void;
-  /** Re-aim an open palette when focus moves to another field. */
-  aim: (insert: (text: string) => void) => void;
+  open: () => void;
 }
-export const PaletteContext = createContext<PaletteApi>({ open: () => {}, aim: () => {} });
+export const PaletteContext = createContext<PaletteApi>({ open: () => {} });
 export const usePalette = () => useContext(PaletteContext);

@@ -1,7 +1,7 @@
 // The variable palette: every variable with the value it has right now
 // on this server (bot name, server name, current load…), grouped. A click
-// inserts it into the field that opened the palette, or the last one that
-// had focus. Without a target it copies the placeholder instead.
+// copies the placeholder and changes no field; typing the opening mark in a
+// field is how a variable gets inserted.
 
 import { useState } from "react";
 import { Check, Image as ImageIcon, X } from "lucide-react";
@@ -22,11 +22,8 @@ function groupVariables(vars: TemplateVariable[]): [string, TemplateVariable[]][
 
 const isImage = (name: string) => /avatar|icon|image/i.test(name);
 
-export function VariablePalette({ variables, hasTarget, onPick, onClose }: {
+export function VariablePalette({ variables, onClose }: {
   variables: TemplateVariable[];
-  /** Whether a field is aimed at; without one a click copies the placeholder. */
-  hasTarget: boolean;
-  onPick: (placeholder: string) => void;
   onClose: () => void;
 }) {
   const syntax = useSyntax();
@@ -38,9 +35,7 @@ export function VariablePalette({ variables, hasTarget, onPick, onClose }: {
     : variables;
 
   const pick = (v: TemplateVariable) => {
-    const placeholder = wrapVariable(v.name, syntax);
-    if (hasTarget) { onPick(placeholder); return; }
-    navigator.clipboard?.writeText(placeholder).catch(() => {});
+    navigator.clipboard?.writeText(wrapVariable(v.name, syntax)).catch(() => {});
     setCopied(v.name);
     setTimeout(() => setCopied((c) => (c === v.name ? null : c)), 1200);
   };
@@ -49,9 +44,7 @@ export function VariablePalette({ variables, hasTarget, onPick, onClose }: {
     <div className="overflow-hidden rounded-lg border border-border/60 bg-card">
       <div className="flex items-center gap-2 border-b border-border/40 px-3 py-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Variables</span>
-        <span className="text-[11px] text-muted-foreground/70">
-          {hasTarget ? "Click to insert" : "Click to copy"}
-        </span>
+        <span className="text-[11px] text-muted-foreground/70">Click to copy</span>
         <button type="button" onClick={onClose} aria-label="Close" className="ml-auto rounded p-1 text-muted-foreground hover:bg-muted/50 hover:text-foreground">
           <X className="h-3.5 w-3.5" />
         </button>

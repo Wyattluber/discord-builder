@@ -16,7 +16,7 @@ import { VariablePalette } from "./VariablePalette";
 import { BlockCard, type DragProps, type MoveProps } from "./BlockCard";
 import { AddComponentBar, AddComponentCards, BLOCK_ICONS } from "./AddComponent";
 import { DiscordPreview } from "./DiscordPreview";
-import { useIsCompact } from "./useCompact";
+import { useIsCompact, useVisibleHeight } from "./useCompact";
 import {
   BLOCK_LABELS,
   type BlockKind,
@@ -97,16 +97,14 @@ export function DiscordMessageBuilder({ value, onChange, variables, syntax = PER
   const compact = useIsCompact();
   const [pane, setPane] = useState<"editor" | "preview">("editor");
 
-  // Variable palette: open next to the preview, aimed at the markdown field
-  // that asked for it or was focused last. The target lives in a ref so a
-  // focus change never re-renders the whole editor.
+  // Variable palette: open next to the preview; a click there copies.
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const paletteTarget = useRef<((text: string) => void) | null>(null);
-  const [hasTarget, setHasTarget] = useState(false);
-  const paletteApi = useMemo<PaletteApi>(() => ({
-    open: (insert) => { paletteTarget.current = insert; setHasTarget(true); setPaletteOpen(true); },
-    aim: (insert) => { paletteTarget.current = insert; setHasTarget(true); },
-  }), []);
+  const paletteApi = useMemo<PaletteApi>(() => ({ open: () => setPaletteOpen(true) }), []);
+
+  // The preview column scrolls on its own, no taller than what its scroll
+  // container shows, so a long message no longer drags it along unevenly.
+  const previewRef = useRef<HTMLDivElement>(null);
+  const previewMax = useVisibleHeight(previewRef, !compact);
 
   // Exactly what the host offered, deduped, with live values from
   // sampleOverrides replacing the placeholder samples. The builder adds no
@@ -332,12 +330,7 @@ export function DiscordMessageBuilder({ value, onChange, variables, syntax = PER
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
       <div className={showEditor ? "space-y-3" : "hidden"}>
         {compact && paletteOpen && (
-          <VariablePalette
-            variables={allVariables}
-            hasTarget={hasTarget}
-            onPick={(t) => paletteTarget.current?.(t)}
-            onClose={() => setPaletteOpen(false)}
-          />
+          <VariablePalette variables={allVariables} onClose={() => setPaletteOpen(false)} />
         )}
         {/* One panel, blocks as rows. Rows are the list; the panel is the frame. */}
         <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60 bg-card">
@@ -351,14 +344,13 @@ export function DiscordMessageBuilder({ value, onChange, variables, syntax = PER
         <AddComponentCards kinds={ROOT_BLOCK_KINDS} onAdd={addRoot} />
       </div>
 
-      <div className={`space-y-2 lg:sticky lg:top-4 lg:self-start ${showPreview ? "" : "hidden"}`}>
+      <div
+        ref={previewRef}
+        style={previewMax ? { maxHeight: previewMax } : undefined}
+        className={`space-y-2 lg:sticky lg:top-4 lg:self-start lg:overflow-y-auto lg:overscroll-contain ${showPreview ? "" : "hidden"}`}
+      >
         {!compact && paletteOpen && (
-          <VariablePalette
-            variables={allVariables}
-            hasTarget={hasTarget}
-            onPick={(t) => paletteTarget.current?.(t)}
-            onClose={() => setPaletteOpen(false)}
-          />
+          <VariablePalette variables={allVariables} onClose={() => setPaletteOpen(false)} />
         )}
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Preview</span>
