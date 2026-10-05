@@ -1,0 +1,99 @@
+name: Release
+
+# A tag is a release. Once the package checks out, every project that uses
+# it gets a commit raising its version to the tag, on the branch it deploys
+# from, so a change made here is everywhere without anyone doing it by hand.
+# Pushing to other repositories needs CONSUMER_TOKEN: a fine-grained token
+# with "Contents: read and write" on the repositories listed below.
+#
+# A project joins by a line in the matrix: its repo, the branch it deploys
+# from, the folders with a package.json that depends on this package, and a
+# check that must pass before the commit (empty when the project's own
+# pipeline checks anyway).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag to roll out, e.g. v1.2.0
+        required: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run bundle
+      - name: dist/ is committed and current
+        run: git diff --exit-code --stat -- dist || (echo "The tag's dist/ is stale. Run npm run bundle, commit, tag again." && exit 1)
+      - run: npm test
+
+  roll-out:
+    needs: check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Its staging pipeline runs tests, typecheck and build before it deploys
+          - repo: Wyattluber/sorin-support
+            branch: staging
+            dirs: ". dashboard"
+            check: ""
+          # Cloudflare Pages builds main on push; the typecheck has old errors, the build is the gate
+          - repo: Wyattluber/sorinscriptsdash-jun_2026
+            branch: main
+            dirs: "."
+            check: "npm run build"
+          - repo: Wyattluber/botvault
+            branch: main
+            dirs: "."
+            check: "npx tsc --noEmit && npm run build"
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: The token is there
+        env:
+          TOKEN: ${{ secrets.CONSUMER_TOKEN }}
+        run: test -n "$TOKEN" || (echo "Set the CONSUMER_TOKEN secret in this repository first." && exit 1)
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo }}
+          ref: ${{ matrix.branch }}
+          token: ${{ secrets.CONSUMER_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Raise the version
+        run: |
+          for dir in ${{ matrix.dirs }}; do
+            if [ -n "${{ matrix.check }}" ]; then
+              (cd "$dir" && npm install --no-audit --no-fund "github:Wyattluber/discord-builder#$TAG")
+            else
+              (cd "$dir" && npm install --package-lock-only --no-audit --no-fund "github:Wyattluber/discord-builder#$TAG")
+            fi
+          done
+      - name: Check the project
+        if: matrix.check != ''
+        run: ${{ matrix.check }}
+      - name: Commit and push
+        run: |
+          git add -- $(for dir in ${{ matrix.dirs }}; do echo "$dir/package.json $dir/package-lock.json"; done)
+          if git diff --cached --quiet; then
+            echo "${{ matrix.repo }} is already on $TAG"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Message builder $TAG" -m "Raised by the release workflow of Wyattluber/discord-builder."
+          git push origin HEAD:${{ matrix.branch }}

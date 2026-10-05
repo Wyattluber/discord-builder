@@ -104,3 +104,21 @@ project that installs this.
 
 A release is a tag (`v1.2.0`) on a commit whose `dist/` is current; CI refuses
 a push where it is not.
+
+## Releases reach every project on their own
+
+Pushing a tag runs `.github/workflows/release.yml`: it checks the package
+again, then commits the new version into every project that uses it, on the
+branch that project deploys from:
+
+| Project | Branch | What happens next |
+| --- | --- | --- |
+| `Wyattluber/sorin-support` | `staging` | its pipeline tests, builds and deploys staging; production follows with its next release |
+| `Wyattluber/sorinscriptsdash-jun_2026` | `main` | checked with a build first; Cloudflare Pages deploys |
+| `Wyattluber/botvault` | `main` | checked with typecheck and build first; deployed by hand |
+
+The workflow pushes with the `CONSUMER_TOKEN` secret, a fine-grained token
+with "Contents: read and write" on those repositories. Since it commits to
+them, pull before pushing there after a release. A project joins with one
+line in the workflow's matrix. To roll out a tag again (a project that
+failed, or one that just joined), run the workflow by hand with the tag.
