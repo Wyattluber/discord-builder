@@ -17,7 +17,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: npm run build
+      - run: npm run bundle
       - name: dist/ is committed and current
-        run: git diff --exit-code --stat -- dist || (echo "Run npm run build and commit dist/." && exit 1)
+        run: git diff --exit-code --stat -- dist || (echo "Run npm run bundle and commit dist/." && exit 1)
       - run: npm test

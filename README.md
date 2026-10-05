@@ -91,10 +91,14 @@ the template itself, never when they arrive through a variable.
 
 ```sh
 npm install
-npm run build      # writes dist/, commit it with the change
+npm run bundle     # writes dist/, commit it with the change
 npm test
 npm run typecheck
 ```
+
+The script is not called `build` on purpose: npm runs `npm install` inside a
+git dependency that has one, which would pull every dev dependency into each
+project that installs this.
 
 A release is a tag (`v1.2.0`) on a commit whose `dist/` is current; CI refuses
 a push where it is not.
