@@ -20,7 +20,7 @@ dashboard without a bot does not pull anything it cannot use:
 Releases are git tags; `dist/` is committed, so nothing is built on install.
 
 ```sh
-npm install github:Wyattluber/discord-builder#v1.1.0
+npm install github:Wyattluber/discord-builder#v1.2.0
 ```
 
 ## In a dashboard
@@ -66,7 +66,8 @@ builder uses its own bare modal; without an action editor, the shipped one.
 **Click behaviour.** `button.action` is host data: the builder carries it
 through the model and the serializer drops it, because Discord's payload has no
 such field. `DiscordActionEditor` offers reply / DM / post to a channel; a host
-with other actions passes its own editor.
+with other actions passes its own editor, and one whose bot answers no clicks
+passes `actionEditor: null`, so a button offers only its custom ID.
 
 ## In a bot
 

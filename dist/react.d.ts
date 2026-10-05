@@ -119,8 +119,10 @@ interface BuilderIntegrations {
      * The editor for a button's click behaviour. Without it the shipped one is
      * used (reply / DM / post to channel); a host whose bot answers clicks
      * differently passes its own and owns the shape stored on the button.
+     * `null` when the host's bot answers no clicks at all: buttons then offer
+     * only their custom ID.
      */
-    actionEditor?: ComponentType<ActionEditorProps>;
+    actionEditor?: ComponentType<ActionEditorProps> | null;
 }
 declare const BuilderContext: react.Context<BuilderIntegrations>;
 /**

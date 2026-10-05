@@ -811,7 +811,7 @@ import { jsx as jsx5, jsxs as jsxs5 } from "react/jsx-runtime";
 function ButtonEditor({ button, onChange, variables }) {
   const set = (patch) => onChange({ ...button, ...patch });
   const { savedActions, actionEditor } = useBuilderIntegrations();
-  const ActionEditor = actionEditor ?? DiscordActionEditor;
+  const ActionEditor = actionEditor === null ? null : actionEditor ?? DiscordActionEditor;
   const listId = `saved-actions-${button.id}`;
   const applySaved = (customId) => {
     const s = (savedActions ?? []).find((x) => x.customId === customId);
@@ -875,7 +875,7 @@ function ButtonEditor({ button, onChange, variables }) {
         }
       )
     ] }),
-    button.style !== "link" && /* @__PURE__ */ jsx5(
+    button.style !== "link" && ActionEditor && /* @__PURE__ */ jsx5(
       ActionEditor,
       {
         action: button.action,

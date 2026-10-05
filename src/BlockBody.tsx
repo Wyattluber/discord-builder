@@ -26,8 +26,9 @@ import type {
 export function ButtonEditor({ button, onChange, variables }: { button: ButtonNode; onChange: (b: ButtonNode) => void; variables?: TemplateVariable[] }) {
   const set = (patch: Partial<ButtonNode>) => onChange({ ...button, ...patch });
   const { savedActions, actionEditor } = useBuilderIntegrations();
-  // The click behaviour is the host's vocabulary; ours is only the default.
-  const ActionEditor = actionEditor ?? DiscordActionEditor;
+  // The click behaviour is the host's vocabulary; ours is only the default,
+  // and null means the host answers no clicks
+  const ActionEditor = actionEditor === null ? null : (actionEditor ?? DiscordActionEditor);
   const listId = `saved-actions-${button.id}`;
   const applySaved = (customId: string) => {
     const s = (savedActions ?? []).find((x) => x.customId === customId);
@@ -94,7 +95,7 @@ export function ButtonEditor({ button, onChange, variables }: { button: ButtonNo
           )}
         </div>
       )}
-      {button.style !== "link" && (
+      {button.style !== "link" && ActionEditor && (
         <ActionEditor
           action={button.action}
           onChange={(action) => set({ action })}
