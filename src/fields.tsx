@@ -1,10 +1,12 @@
-// Reusable form fields for the builder cards: a markdown textarea with a
-// toolbar (variables, emoji, formatting) + live char counter, a plain text
-// field, a labelled switch, a segmented toggle, and a lightweight popover.
+// Reusable form fields for the builder cards: a markdown field (custom emoji
+// shown as images, see EmojiTextarea) with a toolbar (variables, emoji,
+// formatting) + live char counter, a plain text field, a labelled switch, a
+// segmented toggle, and a lightweight popover.
 
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { AtSign, Bold, Hash, Heading, Image as ImageIcon, Italic, List, Loader2, Paperclip, Percent, Smile, Strikethrough, Upload } from "lucide-react";
-import { Button, Input, Switch, Textarea } from "./ui";
+import { Button, Input, Switch } from "./ui";
+import { EmojiTextarea, type EmojiTextareaHandle } from "./EmojiTextarea";
 import type { TemplateVariable } from "./types";
 import { useBuilderIntegrations, usePalette, useSyntax, type UserLite } from "./context";
 import { closingVariablePattern, partialVariablePattern, variablePattern, wrapVariable } from "./syntax";
@@ -255,7 +257,7 @@ export function MarkdownField({
   max?: number;
   placeholder?: string;
 }) {
-  const ref = useRef<HTMLTextAreaElement>(null);
+  const ref = useRef<EmojiTextareaHandle>(null);
   const { channels, searchUsers } = useBuilderIntegrations();
   const palette = usePalette();
   const syntax = useSyntax();
@@ -289,12 +291,11 @@ export function MarkdownField({
     if (!ac) return;
     const caret = ac.start + syntax.open.length + ac.prefix.length;
     const placeholder = wrapVariable(name, syntax);
-    onChange(`${value.slice(0, ac.start)}${placeholder}${value.slice(caret)}`.slice(0, max));
     setAc(null);
-    focusAt(ac.start + placeholder.length);
+    edit(`${value.slice(0, ac.start)}${placeholder}${value.slice(caret)}`, ac.start + placeholder.length);
   }
 
-  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     if (!ac || acMatches.length === 0) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -310,46 +311,32 @@ export function MarkdownField({
     }
   }
 
-  function focusAt(pos: number) {
-    requestAnimationFrame(() => {
-      const el = ref.current;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(pos, pos);
-    });
+  // Every toolbar change goes through the field: one undo step, focus and
+  // selection back where they belong
+  function edit(next: string, start: number, end = start) {
+    if (ref.current) ref.current.edit(next, start, end);
+    else onChange(next.slice(0, max));
+  }
+
+  function selection() {
+    return ref.current?.getSelection() ?? { start: value.length, end: value.length };
   }
 
   function insert(text: string) {
-    const el = ref.current;
-    if (!el) {
-      onChange(value + text);
-      return;
-    }
-    const s = el.selectionStart ?? value.length;
-    const e = el.selectionEnd ?? value.length;
-    onChange(value.slice(0, s) + text + value.slice(e));
-    focusAt(s + text.length);
+    const { start, end } = selection();
+    edit(value.slice(0, start) + text + value.slice(end), start + text.length);
   }
 
   function wrap(token: string, token2 = token) {
-    const el = ref.current;
-    if (!el) return;
-    const s = el.selectionStart ?? 0;
-    const e = el.selectionEnd ?? 0;
-    const sel = value.slice(s, e) || "text";
-    onChange(value.slice(0, s) + token + sel + token2 + value.slice(e));
-    requestAnimationFrame(() => {
-      el.focus();
-      el.setSelectionRange(s + token.length, s + token.length + sel.length);
-    });
+    const { start, end } = selection();
+    const sel = value.slice(start, end) || "text";
+    edit(value.slice(0, start) + token + sel + token2 + value.slice(end), start + token.length, start + token.length + sel.length);
   }
 
   function prefixLine(prefix: string) {
-    const el = ref.current;
-    const s = el?.selectionStart ?? 0;
-    const lineStart = value.lastIndexOf("\n", s - 1) + 1;
-    onChange(value.slice(0, lineStart) + prefix + value.slice(lineStart));
-    focusAt(s + prefix.length);
+    const { start } = selection();
+    const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+    edit(value.slice(0, lineStart) + prefix + value.slice(lineStart), start + prefix.length);
   }
 
   return (
@@ -391,19 +378,17 @@ export function MarkdownField({
         </div>
       </div>
       <div className="relative">
-        <Textarea
+        <EmojiTextarea
           ref={ref}
           rows={rows}
+          max={max}
           value={value}
           placeholder={placeholder}
-          onChange={(e) => {
-            const v = e.target.value.slice(0, max);
-            onChange(v);
-            refreshAutocomplete(v, e.target.selectionStart ?? v.length);
-          }}
+          ariaLabel={label}
+          onChange={onChange}
+          onCaret={refreshAutocomplete}
           onKeyDown={onKeyDown}
           onBlur={() => setAc(null)}
-          onClick={(e) => refreshAutocomplete(value, (e.target as HTMLTextAreaElement).selectionStart ?? 0)}
         />
         {ac && acMatches.length > 0 && (
           <div className="absolute left-0 top-full z-50 mt-1 w-96 max-w-[calc(100vw-3rem)] rounded-md border border-border/60 bg-popover p-1 shadow-lg">

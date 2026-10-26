@@ -63,6 +63,11 @@ server emojis, the media library, the host's dialog component (`modal`) and the
 editor for a button's click behaviour (`actionEditor`). Without a dialog the
 builder uses its own bare modal; without an action editor, the shipped one.
 
+**Custom emoji in text fields.** The markdown fields show `<:name:id>` and
+`<a:name:id>` as the emoji image while the value stays that text. One whose
+image doesn't load (wrong ID, deleted) shows as a red `:name:`. Copying a
+selection copies the tokens; paste is plain text.
+
 **Click behaviour.** `button.action` is host data: the builder carries it
 through the model and the serializer drops it, because Discord's payload has no
 such field. `DiscordActionEditor` offers reply / DM / post to a channel; a host

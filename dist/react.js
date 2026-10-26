@@ -33,7 +33,7 @@ import {
 } from "./chunk-S64MESBS.js";
 
 // src/DiscordMessageBuilder.tsx
-import { useMemo, useRef as useRef4, useState as useState5 } from "react";
+import { useMemo, useRef as useRef5, useState as useState5 } from "react";
 import { Percent as Percent2 } from "lucide-react";
 
 // src/BlockBody.tsx
@@ -191,13 +191,350 @@ var PaletteContext = createContext({ open: () => {
 var usePalette = () => useContext(PaletteContext);
 
 // src/fields.tsx
-import { useEffect as useEffect3, useRef as useRef2, useState as useState2 } from "react";
+import { useEffect as useEffect4, useRef as useRef3, useState as useState2 } from "react";
 import { AtSign, Bold, Hash, Heading, Image as ImageIcon, Italic, List, Loader2 as Loader22, Paperclip, Percent, Smile, Strikethrough, Upload } from "lucide-react";
 
+// src/EmojiTextarea.tsx
+import { forwardRef as forwardRef2, useEffect as useEffect2, useImperativeHandle, useLayoutEffect as useLayoutEffect2, useRef as useRef2 } from "react";
+import { jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
+var useBrowserLayoutEffect2 = typeof window === "undefined" ? useEffect2 : useLayoutEffect2;
+var TOKEN = /<(a?):(\w{2,32}):(\d{17,20})>/g;
+function splitEmoji(value) {
+  const out = [];
+  let last = 0;
+  for (const m of value.matchAll(TOKEN)) {
+    const at = m.index ?? 0;
+    if (at > last) out.push({ text: value.slice(last, at) });
+    out.push({ token: m[0], animated: m[1] === "a", name: m[2], id: m[3] });
+    last = at + m[0].length;
+  }
+  if (last < value.length) out.push({ text: value.slice(last) });
+  return out;
+}
+var tokenOf = (n) => n.nodeType === 1 ? n.dataset.token : void 0;
+var isTail = (n) => n.nodeType === 1 && n.dataset.tail != null;
+function nodeLength(n) {
+  if (n.nodeType === 3) return (n.nodeValue ?? "").length;
+  const token = tokenOf(n);
+  if (token != null) return token.length;
+  if (n.nodeName === "BR") return isTail(n) ? 0 : 1;
+  let len = 0;
+  n.childNodes.forEach((c) => {
+    len += nodeLength(c);
+  });
+  return len;
+}
+function serialize2(root) {
+  let s = "";
+  const walk = (node) => {
+    node.childNodes.forEach((n) => {
+      if (n.nodeType === 3) s += (n.nodeValue ?? "").replace(/ /g, " ");
+      else if (tokenOf(n) != null) s += tokenOf(n);
+      else if (n.nodeName === "BR") {
+        if (!isTail(n)) s += "\n";
+      } else if (n.nodeType === 1) walk(n);
+    });
+  };
+  walk(root);
+  return s;
+}
+var SIZE = "height:1.375em;width:auto;vertical-align:-0.3em;margin:0 0.05em";
+function emojiNode(seg) {
+  const img = document.createElement("img");
+  img.src = `https://cdn.discordapp.com/emojis/${seg.id}.${seg.animated ? "gif" : "png"}?size=48`;
+  img.alt = `:${seg.name}:`;
+  img.title = `:${seg.name}:`;
+  img.draggable = false;
+  img.dataset.token = seg.token;
+  img.style.cssText = `display:inline-block;${SIZE}`;
+  img.onerror = () => {
+    const chip = document.createElement("span");
+    chip.textContent = `:${seg.name}:`;
+    chip.title = "Emoji not found: wrong ID, or deleted";
+    chip.contentEditable = "false";
+    chip.dataset.token = seg.token;
+    chip.style.cssText = "padding:0 0.2em;border-radius:0.25em;background:rgba(239,68,68,0.15);color:rgb(248,113,113)";
+    img.replaceWith(chip);
+  };
+  return img;
+}
+function render(root, value) {
+  const frag = document.createDocumentFragment();
+  for (const seg of splitEmoji(value)) {
+    frag.appendChild("text" in seg ? document.createTextNode(seg.text) : emojiNode(seg));
+  }
+  if (value.endsWith("\n")) {
+    const br = document.createElement("br");
+    br.dataset.tail = "";
+    frag.appendChild(br);
+  }
+  root.replaceChildren(frag);
+}
+function isCanonical(root, value) {
+  const dom = [];
+  const nodes = Array.from(root.childNodes);
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    if (n.nodeType === 3) {
+      const t = n.nodeValue ?? "";
+      if (typeof dom[dom.length - 1] === "string") dom[dom.length - 1] += t;
+      else if (t) dom.push(t);
+    } else if (tokenOf(n) != null) dom.push({ token: tokenOf(n) });
+    else if (isTail(n) && i === nodes.length - 1) continue;
+    else return false;
+  }
+  const want = splitEmoji(value);
+  if (want.length !== dom.length) return false;
+  for (let i = 0; i < want.length; i++) {
+    const w = want[i], d = dom[i];
+    if ("text" in w ? w.text !== d : typeof d === "string" || d.token !== w.token) return false;
+  }
+  const last = nodes[nodes.length - 1];
+  return value.endsWith("\n") === !!(last && isTail(last));
+}
+function offsetOf(root, node, offset) {
+  for (let p = node; p && p !== root; p = p.parentNode) {
+    if (p !== node && tokenOf(p) != null && p.parentNode) {
+      node = p.parentNode;
+      offset = Array.prototype.indexOf.call(p.parentNode.childNodes, p) + 1;
+      break;
+    }
+  }
+  let total = 0;
+  let done = false;
+  const visit = (cur) => {
+    if (done) return;
+    if (cur === node) {
+      if (cur.nodeType === 3) total += offset;
+      else if (tokenOf(cur) != null) total += offset > 0 ? nodeLength(cur) : 0;
+      else for (let i = 0; i < offset && i < cur.childNodes.length; i++) total += nodeLength(cur.childNodes[i]);
+      done = true;
+      return;
+    }
+    if (cur.nodeType === 3 || tokenOf(cur) != null || cur.nodeName === "BR") {
+      total += nodeLength(cur);
+      return;
+    }
+    for (const c of Array.from(cur.childNodes)) {
+      visit(c);
+      if (done) return;
+    }
+  };
+  visit(root);
+  return total;
+}
+function pointAt(root, pos) {
+  let rest = pos;
+  const nodes = Array.from(root.childNodes);
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    const len = nodeLength(n);
+    if (n.nodeType === 3) {
+      if (rest <= len) return [n, rest];
+    } else if (rest < len || rest === 0) {
+      return [root, i];
+    }
+    rest -= len;
+  }
+  return [root, nodes.length];
+}
+function readSelection(root) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  const r = sel.getRangeAt(0);
+  if (!root.contains(r.startContainer) || !root.contains(r.endContainer)) return null;
+  const a = offsetOf(root, r.startContainer, r.startOffset);
+  const b = offsetOf(root, r.endContainer, r.endOffset);
+  return { start: Math.min(a, b), end: Math.max(a, b) };
+}
+function writeSelection(root, start, end = start) {
+  const sel = window.getSelection();
+  if (!sel) return;
+  const [sn, so] = pointAt(root, start);
+  const [en, eo] = pointAt(root, end);
+  const r = document.createRange();
+  r.setStart(sn, so);
+  r.setEnd(en, eo);
+  sel.removeAllRanges();
+  sel.addRange(r);
+}
+var EmojiTextarea = forwardRef2(function EmojiTextarea2({ value, onChange, rows = 4, max, placeholder, ariaLabel, onKeyDown, onBlur, onCaret, className = "" }, ref) {
+  const root = useRef2(null);
+  const lastSel = useRef2({ start: value.length, end: value.length });
+  const pending = useRef2(null);
+  const composing = useRef2(false);
+  const history = useRef2({ past: [], future: [], typedAt: 0 });
+  const valueRef = useRef2(value);
+  valueRef.current = value;
+  const clip = (v) => max != null && v.length > max ? v.slice(0, max) : v;
+  const focused = () => !!root.current && document.activeElement === root.current;
+  function currentSelection() {
+    const el = root.current;
+    const s = el && focused() ? readSelection(el) : null;
+    if (s) lastSel.current = s;
+    return lastSel.current;
+  }
+  function sync(v) {
+    const el = root.current;
+    if (!el || composing.current) return;
+    const sel = pending.current ?? (focused() ? readSelection(el) : null);
+    const redraw = !isCanonical(el, v);
+    if (redraw) render(el, v);
+    if ((redraw || pending.current) && sel && focused()) {
+      const s = Math.min(sel.start, v.length), e = Math.min(sel.end, v.length);
+      writeSelection(el, s, e);
+      lastSel.current = { start: s, end: e };
+    }
+    pending.current = null;
+  }
+  useBrowserLayoutEffect2(() => {
+    sync(value);
+  }, [value]);
+  useEffect2(() => {
+    const onSel = () => {
+      const el = root.current;
+      if (!el || !focused()) return;
+      const s = readSelection(el);
+      if (s) lastSel.current = s;
+    };
+    document.addEventListener("selectionchange", onSel);
+    return () => document.removeEventListener("selectionchange", onSel);
+  }, []);
+  function commit(next, kind, before) {
+    next = clip(next);
+    if (next === valueRef.current) {
+      sync(next);
+      return;
+    }
+    const h = history.current;
+    const now = Date.now();
+    if (kind === "edit" || now - h.typedAt > 800 || h.past.length === 0) {
+      h.past.push(before);
+      if (h.past.length > 200) h.past.shift();
+    }
+    h.typedAt = kind === "type" ? now : 0;
+    h.future = [];
+    onChange(next);
+  }
+  function replaceSelection(text) {
+    const v = valueRef.current;
+    const sel = currentSelection();
+    const next = clip(v.slice(0, sel.start) + text + v.slice(sel.end));
+    pending.current = { start: Math.min(sel.start + text.length, next.length), end: Math.min(sel.start + text.length, next.length) };
+    commit(next, "edit", { value: v, sel });
+  }
+  function step(from) {
+    const h = history.current;
+    const snap = h[from].pop();
+    if (!snap) return;
+    (from === "past" ? h.future : h.past).push({ value: valueRef.current, sel: currentSelection() });
+    h.typedAt = 0;
+    pending.current = snap.sel;
+    if (snap.value === valueRef.current) sync(snap.value);
+    else onChange(snap.value);
+  }
+  useImperativeHandle(ref, () => ({
+    focus: () => root.current?.focus(),
+    getSelection: currentSelection,
+    edit(next, start, end = start) {
+      const v = valueRef.current;
+      const before = { value: v, sel: currentSelection() };
+      root.current?.focus();
+      next = clip(next);
+      pending.current = { start: Math.min(start, next.length), end: Math.min(end, next.length) };
+      commit(next, "edit", before);
+    }
+  }));
+  function handleInput() {
+    const el = root.current;
+    if (!el || composing.current) return;
+    const before = { value: valueRef.current, sel: lastSel.current };
+    const next = clip(serialize2(el));
+    const sel = readSelection(el);
+    if (sel) lastSel.current = sel;
+    commit(next, "type", before);
+    onCaret?.(next, lastSel.current.end);
+  }
+  function handleKeyDown(e) {
+    onKeyDown?.(e);
+    if (e.defaultPrevented) return;
+    const mod = (e.ctrlKey || e.metaKey) && !e.altKey;
+    const key = e.key.toLowerCase();
+    if (mod && key === "z") {
+      e.preventDefault();
+      step(e.shiftKey ? "future" : "past");
+      return;
+    }
+    if (mod && key === "y") {
+      e.preventDefault();
+      step("future");
+      return;
+    }
+    if (e.key === "Enter" && !composing.current) {
+      e.preventDefault();
+      replaceSelection("\n");
+    }
+  }
+  const minHeight = `calc(${rows} * 1.25rem + 1rem + 2px)`;
+  return /* @__PURE__ */ jsxs2("div", { style: { position: "relative" }, children: [
+    /* @__PURE__ */ jsx2(
+      "div",
+      {
+        ref: root,
+        role: "textbox",
+        "aria-multiline": "true",
+        "aria-label": ariaLabel,
+        contentEditable: true,
+        suppressContentEditableWarning: true,
+        spellCheck: true,
+        className: `w-full overflow-hidden rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground outline-none focus:border-dbx-accent-500 ${className}`,
+        style: { minHeight, whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
+        onInput: handleInput,
+        onKeyDown: handleKeyDown,
+        onBlur,
+        onClick: () => onCaret?.(valueRef.current, currentSelection().end),
+        onCompositionStart: () => {
+          composing.current = true;
+        },
+        onCompositionEnd: () => {
+          composing.current = false;
+          handleInput();
+        },
+        onPaste: (e) => {
+          e.preventDefault();
+          replaceSelection(e.clipboardData.getData("text/plain").replace(/\r\n?/g, "\n"));
+        },
+        onCopy: (e) => {
+          const s = currentSelection();
+          if (s.start === s.end) return;
+          e.preventDefault();
+          e.clipboardData.setData("text/plain", valueRef.current.slice(s.start, s.end));
+        },
+        onCut: (e) => {
+          const s = currentSelection();
+          if (s.start === s.end) return;
+          e.preventDefault();
+          e.clipboardData.setData("text/plain", valueRef.current.slice(s.start, s.end));
+          replaceSelection("");
+        },
+        onDrop: (e) => e.preventDefault()
+      }
+    ),
+    value === "" && placeholder && /* @__PURE__ */ jsx2(
+      "span",
+      {
+        className: "select-none text-sm text-muted-foreground/60",
+        style: { position: "absolute", left: "0.75rem", top: "0.5rem", pointerEvents: "none", whiteSpace: "pre-wrap" },
+        children: placeholder
+      }
+    )
+  ] });
+});
+
 // src/MediaPicker.tsx
-import { useEffect as useEffect2, useState } from "react";
+import { useEffect as useEffect3, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
-import { Fragment, jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
+import { Fragment, jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
 function fmtSize(bytes) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -214,7 +551,7 @@ function MediaPicker({
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState(null);
-  useEffect2(() => {
+  useEffect3(() => {
     if (!open) return;
     let active = true;
     setLoading(true);
@@ -236,18 +573,18 @@ function MediaPicker({
       setBusyId(null);
     }
   }
-  return /* @__PURE__ */ jsx2(Dialog, { open, onOpenChange, title: "Media library", className: "max-h-[85vh] max-w-3xl overflow-y-auto", children: /* @__PURE__ */ jsx2("div", { className: "space-y-2", children: loading ? /* @__PURE__ */ jsx2("div", { className: "grid grid-cols-3 gap-2 sm:grid-cols-4", children: Array.from({ length: 8 }).map((_, i) => /* @__PURE__ */ jsx2(Skeleton, { className: "h-28 w-full" }, i)) }) : assets.length === 0 ? /* @__PURE__ */ jsx2("p", { className: "py-8 text-center text-sm text-muted-foreground", children: "No uploads yet. Images you upload appear here." }) : /* @__PURE__ */ jsxs2(Fragment, { children: [
-    /* @__PURE__ */ jsx2("p", { className: "text-[11px] text-muted-foreground", children: "Click an image to use it. A deleted image stops showing in messages that use it." }),
-    /* @__PURE__ */ jsx2("div", { className: "grid grid-cols-3 gap-2 sm:grid-cols-4", children: assets.map((a) => /* @__PURE__ */ jsxs2("div", { className: "group relative overflow-hidden rounded-md border border-border/60", children: [
-      /* @__PURE__ */ jsx2("button", { type: "button", onClick: () => {
+  return /* @__PURE__ */ jsx3(Dialog, { open, onOpenChange, title: "Media library", className: "max-h-[85vh] max-w-3xl overflow-y-auto", children: /* @__PURE__ */ jsx3("div", { className: "space-y-2", children: loading ? /* @__PURE__ */ jsx3("div", { className: "grid grid-cols-3 gap-2 sm:grid-cols-4", children: Array.from({ length: 8 }).map((_, i) => /* @__PURE__ */ jsx3(Skeleton, { className: "h-28 w-full" }, i)) }) : assets.length === 0 ? /* @__PURE__ */ jsx3("p", { className: "py-8 text-center text-sm text-muted-foreground", children: "No uploads yet. Images you upload appear here." }) : /* @__PURE__ */ jsxs3(Fragment, { children: [
+    /* @__PURE__ */ jsx3("p", { className: "text-[11px] text-muted-foreground", children: "Click an image to use it. A deleted image stops showing in messages that use it." }),
+    /* @__PURE__ */ jsx3("div", { className: "grid grid-cols-3 gap-2 sm:grid-cols-4", children: assets.map((a) => /* @__PURE__ */ jsxs3("div", { className: "group relative overflow-hidden rounded-md border border-border/60", children: [
+      /* @__PURE__ */ jsx3("button", { type: "button", onClick: () => {
         onSelect(a.url);
         onOpenChange(false);
-      }, className: "block w-full", children: /* @__PURE__ */ jsx2("img", { src: a.url, alt: a.name ?? "", className: "h-28 w-full object-cover transition-transform group-hover:scale-105" }) }),
-      /* @__PURE__ */ jsxs2("div", { className: "flex items-center justify-between gap-1 px-1.5 py-1 text-[10px] text-muted-foreground", children: [
-        /* @__PURE__ */ jsx2("span", { className: "truncate", title: a.name ?? "", children: a.name || "image" }),
-        /* @__PURE__ */ jsx2("span", { className: "shrink-0", children: fmtSize(a.size) })
+      }, className: "block w-full", children: /* @__PURE__ */ jsx3("img", { src: a.url, alt: a.name ?? "", className: "h-28 w-full object-cover transition-transform group-hover:scale-105" }) }),
+      /* @__PURE__ */ jsxs3("div", { className: "flex items-center justify-between gap-1 px-1.5 py-1 text-[10px] text-muted-foreground", children: [
+        /* @__PURE__ */ jsx3("span", { className: "truncate", title: a.name ?? "", children: a.name || "image" }),
+        /* @__PURE__ */ jsx3("span", { className: "shrink-0", children: fmtSize(a.size) })
       ] }),
-      /* @__PURE__ */ jsx2(
+      /* @__PURE__ */ jsx3(
         "button",
         {
           type: "button",
@@ -255,7 +592,7 @@ function MediaPicker({
           disabled: busyId === a.id,
           title: "Delete",
           className: "absolute right-1 top-1 rounded bg-black/60 p-1 opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100",
-          children: busyId === a.id ? /* @__PURE__ */ jsx2(Loader2, { className: "h-3.5 w-3.5 animate-spin text-white" }) : /* @__PURE__ */ jsx2(Trash2, { className: "h-3.5 w-3.5 text-red-400" })
+          children: busyId === a.id ? /* @__PURE__ */ jsx3(Loader2, { className: "h-3.5 w-3.5 animate-spin text-white" }) : /* @__PURE__ */ jsx3(Trash2, { className: "h-3.5 w-3.5 text-red-400" })
         }
       )
     ] }, a.id)) })
@@ -264,7 +601,7 @@ function MediaPicker({
 
 // src/fields.tsx
 import { Images } from "lucide-react";
-import { Fragment as Fragment2, jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
+import { Fragment as Fragment2, jsx as jsx4, jsxs as jsxs4 } from "react/jsx-runtime";
 var emojiSearch = null;
 var emojiSearchLoading = null;
 function loadEmojiSearch() {
@@ -273,7 +610,7 @@ function loadEmojiSearch() {
   return emojiSearchLoading;
 }
 function FieldLabel({ children }) {
-  return /* @__PURE__ */ jsx3("label", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children });
+  return /* @__PURE__ */ jsx4("label", { className: "text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children });
 }
 function Popover({
   trigger,
@@ -281,8 +618,8 @@ function Popover({
   align = "end"
 }) {
   const [open, setOpen] = useState2(false);
-  const ref = useRef2(null);
-  useEffect3(() => {
+  const ref = useRef3(null);
+  useEffect4(() => {
     if (!open) return;
     const onDoc = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
@@ -290,9 +627,9 @@ function Popover({
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
-  return /* @__PURE__ */ jsxs3("div", { ref, className: "relative inline-block", children: [
-    /* @__PURE__ */ jsx3("span", { onClick: () => setOpen((o) => !o), children: trigger }),
-    open && /* @__PURE__ */ jsx3(
+  return /* @__PURE__ */ jsxs4("div", { ref, className: "relative inline-block", children: [
+    /* @__PURE__ */ jsx4("span", { onClick: () => setOpen((o) => !o), children: trigger }),
+    open && /* @__PURE__ */ jsx4(
       "div",
       {
         className: `absolute z-50 mt-1 rounded-md border border-border/60 bg-popover p-2 shadow-lg ${align === "end" ? "right-0" : "left-0"}`,
@@ -302,7 +639,7 @@ function Popover({
   ] });
 }
 function ToolbarButton({ title, onClick, children }) {
-  return /* @__PURE__ */ jsx3(
+  return /* @__PURE__ */ jsx4(
     "button",
     {
       type: "button",
@@ -327,7 +664,7 @@ function EmojiGrid({ onPick }) {
   const [q, setQ] = useState2("");
   const query = q.trim().toLowerCase();
   const [search, setSearch] = useState2(() => emojiSearch);
-  useEffect3(() => {
+  useEffect4(() => {
     if (search) return;
     let active = true;
     loadEmojiSearch().then((fn) => {
@@ -340,8 +677,8 @@ function EmojiGrid({ onPick }) {
   const uni = search ? search(q) : [];
   const srv = query ? server.filter((e) => e.name.toLowerCase().includes(query)) : server;
   const showing = server.length > 0 ? tab : "standard";
-  return /* @__PURE__ */ jsxs3("div", { className: "w-[min(18rem,calc(100vw-3rem))]", children: [
-    server.length > 0 && /* @__PURE__ */ jsx3("div", { className: "mb-1.5 flex gap-1 rounded-md bg-muted/30 p-0.5 text-xs", children: [["standard", "Standard"], ["server", `Server (${server.length})`]].map(([id, label]) => /* @__PURE__ */ jsx3(
+  return /* @__PURE__ */ jsxs4("div", { className: "w-[min(18rem,calc(100vw-3rem))]", children: [
+    server.length > 0 && /* @__PURE__ */ jsx4("div", { className: "mb-1.5 flex gap-1 rounded-md bg-muted/30 p-0.5 text-xs", children: [["standard", "Standard"], ["server", `Server (${server.length})`]].map(([id, label]) => /* @__PURE__ */ jsx4(
       "button",
       {
         type: "button",
@@ -352,7 +689,7 @@ function EmojiGrid({ onPick }) {
       },
       id
     )) }),
-    /* @__PURE__ */ jsx3(
+    /* @__PURE__ */ jsx4(
       Input,
       {
         value: q,
@@ -361,26 +698,26 @@ function EmojiGrid({ onPick }) {
         className: "mb-1.5 h-7 text-xs"
       }
     ),
-    /* @__PURE__ */ jsx3("div", { className: "max-h-52 overflow-y-auto overscroll-contain pr-1", children: showing === "standard" ? !search ? /* @__PURE__ */ jsxs3("p", { className: "flex items-center gap-1.5 px-1 py-2 text-xs text-muted-foreground", children: [
-      /* @__PURE__ */ jsx3(Loader22, { className: "h-3 w-3 animate-spin" }),
+    /* @__PURE__ */ jsx4("div", { className: "max-h-52 overflow-y-auto overscroll-contain pr-1", children: showing === "standard" ? !search ? /* @__PURE__ */ jsxs4("p", { className: "flex items-center gap-1.5 px-1 py-2 text-xs text-muted-foreground", children: [
+      /* @__PURE__ */ jsx4(Loader22, { className: "h-3 w-3 animate-spin" }),
       " Loading emoji\u2026"
-    ] }) : uni.length > 0 ? /* @__PURE__ */ jsx3("div", { className: "grid grid-cols-7 justify-items-center gap-0.5 sm:grid-cols-8", children: uni.map((e) => /* @__PURE__ */ jsx3("button", { type: "button", title: e.keywords, onClick: () => onPick(e.char), className: "flex h-8 w-8 items-center justify-center rounded text-base hover:bg-muted/50 sm:h-7 sm:w-7", children: e.char }, e.char)) }) : /* @__PURE__ */ jsx3("p", { className: "px-1 py-2 text-xs text-muted-foreground", children: "No emoji found." }) : srv.length > 0 ? /* @__PURE__ */ jsx3("div", { className: "grid grid-cols-7 justify-items-center gap-0.5 sm:grid-cols-8", children: srv.map((e) => /* @__PURE__ */ jsx3("button", { type: "button", title: e.name, onClick: () => onPick(`<${e.animated ? "a" : ""}:${e.name}:${e.id}>`), className: "flex h-8 w-8 items-center justify-center rounded hover:bg-muted/50 sm:h-7 sm:w-7", children: /* @__PURE__ */ jsx3("img", { src: customEmojiUrl(e.id, e.animated), alt: e.name, loading: "lazy", onError: (ev) => {
+    ] }) : uni.length > 0 ? /* @__PURE__ */ jsx4("div", { className: "grid grid-cols-7 justify-items-center gap-0.5 sm:grid-cols-8", children: uni.map((e) => /* @__PURE__ */ jsx4("button", { type: "button", title: e.keywords, onClick: () => onPick(e.char), className: "flex h-8 w-8 items-center justify-center rounded text-base hover:bg-muted/50 sm:h-7 sm:w-7", children: e.char }, e.char)) }) : /* @__PURE__ */ jsx4("p", { className: "px-1 py-2 text-xs text-muted-foreground", children: "No emoji found." }) : srv.length > 0 ? /* @__PURE__ */ jsx4("div", { className: "grid grid-cols-7 justify-items-center gap-0.5 sm:grid-cols-8", children: srv.map((e) => /* @__PURE__ */ jsx4("button", { type: "button", title: e.name, onClick: () => onPick(`<${e.animated ? "a" : ""}:${e.name}:${e.id}>`), className: "flex h-8 w-8 items-center justify-center rounded hover:bg-muted/50 sm:h-7 sm:w-7", children: /* @__PURE__ */ jsx4("img", { src: customEmojiUrl(e.id, e.animated), alt: e.name, loading: "lazy", onError: (ev) => {
       ev.currentTarget.style.visibility = "hidden";
-    }, className: "h-6 w-6 object-contain" }) }, e.id)) }) : /* @__PURE__ */ jsx3("p", { className: "px-1 py-2 text-xs text-muted-foreground", children: "No server emoji found." }) })
+    }, className: "h-6 w-6 object-contain" }) }, e.id)) }) : /* @__PURE__ */ jsx4("p", { className: "px-1 py-2 text-xs text-muted-foreground", children: "No server emoji found." }) })
   ] });
 }
 function ChannelPicker({ onPick }) {
   const { channels } = useBuilderIntegrations();
   const [q, setQ] = useState2("");
   const list = (channels ?? []).filter((c) => c.name.toLowerCase().includes(q.toLowerCase().trim())).slice(0, 60);
-  return /* @__PURE__ */ jsxs3("div", { className: "w-[min(14rem,calc(100vw-3rem))]", children: [
-    /* @__PURE__ */ jsx3(Input, { value: q, onChange: (e) => setQ(e.target.value), placeholder: "Search channels\u2026", className: "mb-1 h-7 text-xs" }),
-    /* @__PURE__ */ jsxs3("div", { className: "max-h-48 overflow-auto overscroll-contain", children: [
-      list.map((c) => /* @__PURE__ */ jsxs3("button", { type: "button", onClick: () => onPick(c.id), className: "block w-full truncate rounded px-1 py-1 text-left text-xs hover:bg-muted/50", children: [
+  return /* @__PURE__ */ jsxs4("div", { className: "w-[min(14rem,calc(100vw-3rem))]", children: [
+    /* @__PURE__ */ jsx4(Input, { value: q, onChange: (e) => setQ(e.target.value), placeholder: "Search channels\u2026", className: "mb-1 h-7 text-xs" }),
+    /* @__PURE__ */ jsxs4("div", { className: "max-h-48 overflow-auto overscroll-contain", children: [
+      list.map((c) => /* @__PURE__ */ jsxs4("button", { type: "button", onClick: () => onPick(c.id), className: "block w-full truncate rounded px-1 py-1 text-left text-xs hover:bg-muted/50", children: [
         "# ",
         c.name
       ] }, c.id)),
-      list.length === 0 && /* @__PURE__ */ jsx3("p", { className: "px-1 py-2 text-xs text-muted-foreground", children: "No channels found." })
+      list.length === 0 && /* @__PURE__ */ jsx4("p", { className: "px-1 py-2 text-xs text-muted-foreground", children: "No channels found." })
     ] })
   ] });
 }
@@ -389,7 +726,7 @@ function UserPicker({ onPick }) {
   const [q, setQ] = useState2("");
   const [results, setResults] = useState2([]);
   const [busy, setBusy] = useState2(false);
-  useEffect3(() => {
+  useEffect4(() => {
     if (!searchUsers || q.trim().length < 2) {
       setResults([]);
       return;
@@ -411,15 +748,15 @@ function UserPicker({ onPick }) {
       clearTimeout(t);
     };
   }, [q, searchUsers]);
-  return /* @__PURE__ */ jsxs3("div", { className: "w-[min(15rem,calc(100vw-3rem))]", children: [
-    /* @__PURE__ */ jsx3(Input, { value: q, onChange: (e) => setQ(e.target.value), placeholder: "Search users\u2026", className: "mb-1 h-7 text-xs" }),
-    /* @__PURE__ */ jsxs3("div", { className: "max-h-48 overflow-auto overscroll-contain", children: [
-      busy && /* @__PURE__ */ jsx3("p", { className: "px-1 py-2 text-xs text-muted-foreground", children: "Searching\u2026" }),
-      !busy && results.map((u) => /* @__PURE__ */ jsxs3("button", { type: "button", onClick: () => onPick(u.id), className: "flex w-full items-center gap-2 rounded px-1 py-1 text-left text-xs hover:bg-muted/50", children: [
-        u.avatar ? /* @__PURE__ */ jsx3("img", { src: u.avatar, alt: "", className: "h-5 w-5 rounded-full" }) : /* @__PURE__ */ jsx3("span", { className: "h-5 w-5 rounded-full bg-muted" }),
-        /* @__PURE__ */ jsx3("span", { className: "truncate", children: u.name })
+  return /* @__PURE__ */ jsxs4("div", { className: "w-[min(15rem,calc(100vw-3rem))]", children: [
+    /* @__PURE__ */ jsx4(Input, { value: q, onChange: (e) => setQ(e.target.value), placeholder: "Search users\u2026", className: "mb-1 h-7 text-xs" }),
+    /* @__PURE__ */ jsxs4("div", { className: "max-h-48 overflow-auto overscroll-contain", children: [
+      busy && /* @__PURE__ */ jsx4("p", { className: "px-1 py-2 text-xs text-muted-foreground", children: "Searching\u2026" }),
+      !busy && results.map((u) => /* @__PURE__ */ jsxs4("button", { type: "button", onClick: () => onPick(u.id), className: "flex w-full items-center gap-2 rounded px-1 py-1 text-left text-xs hover:bg-muted/50", children: [
+        u.avatar ? /* @__PURE__ */ jsx4("img", { src: u.avatar, alt: "", className: "h-5 w-5 rounded-full" }) : /* @__PURE__ */ jsx4("span", { className: "h-5 w-5 rounded-full bg-muted" }),
+        /* @__PURE__ */ jsx4("span", { className: "truncate", children: u.name })
       ] }, u.id)),
-      !busy && q.trim().length >= 2 && results.length === 0 && /* @__PURE__ */ jsx3("p", { className: "px-1 py-2 text-xs text-muted-foreground", children: "No users found." })
+      !busy && q.trim().length >= 2 && results.length === 0 && /* @__PURE__ */ jsx4("p", { className: "px-1 py-2 text-xs text-muted-foreground", children: "No users found." })
     ] })
   ] });
 }
@@ -432,7 +769,7 @@ function MarkdownField({
   max = 4e3,
   placeholder
 }) {
-  const ref = useRef2(null);
+  const ref = useRef3(null);
   const { channels, searchUsers } = useBuilderIntegrations();
   const palette = usePalette();
   const syntax = useSyntax();
@@ -461,9 +798,8 @@ function MarkdownField({
     if (!ac) return;
     const caret = ac.start + syntax.open.length + ac.prefix.length;
     const placeholder2 = wrapVariable(name, syntax);
-    onChange(`${value.slice(0, ac.start)}${placeholder2}${value.slice(caret)}`.slice(0, max));
     setAc(null);
-    focusAt(ac.start + placeholder2.length);
+    edit(`${value.slice(0, ac.start)}${placeholder2}${value.slice(caret)}`, ac.start + placeholder2.length);
   }
   function onKeyDown(e) {
     if (!ac || acMatches.length === 0) return;
@@ -480,102 +816,83 @@ function MarkdownField({
       setAc(null);
     }
   }
-  function focusAt(pos) {
-    requestAnimationFrame(() => {
-      const el = ref.current;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(pos, pos);
-    });
+  function edit(next, start, end = start) {
+    if (ref.current) ref.current.edit(next, start, end);
+    else onChange(next.slice(0, max));
+  }
+  function selection() {
+    return ref.current?.getSelection() ?? { start: value.length, end: value.length };
   }
   function insert(text) {
-    const el = ref.current;
-    if (!el) {
-      onChange(value + text);
-      return;
-    }
-    const s = el.selectionStart ?? value.length;
-    const e = el.selectionEnd ?? value.length;
-    onChange(value.slice(0, s) + text + value.slice(e));
-    focusAt(s + text.length);
+    const { start, end } = selection();
+    edit(value.slice(0, start) + text + value.slice(end), start + text.length);
   }
   function wrap(token, token2 = token) {
-    const el = ref.current;
-    if (!el) return;
-    const s = el.selectionStart ?? 0;
-    const e = el.selectionEnd ?? 0;
-    const sel = value.slice(s, e) || "text";
-    onChange(value.slice(0, s) + token + sel + token2 + value.slice(e));
-    requestAnimationFrame(() => {
-      el.focus();
-      el.setSelectionRange(s + token.length, s + token.length + sel.length);
-    });
+    const { start, end } = selection();
+    const sel = value.slice(start, end) || "text";
+    edit(value.slice(0, start) + token + sel + token2 + value.slice(end), start + token.length, start + token.length + sel.length);
   }
   function prefixLine(prefix) {
-    const el = ref.current;
-    const s = el?.selectionStart ?? 0;
-    const lineStart = value.lastIndexOf("\n", s - 1) + 1;
-    onChange(value.slice(0, lineStart) + prefix + value.slice(lineStart));
-    focusAt(s + prefix.length);
+    const { start } = selection();
+    const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+    edit(value.slice(0, lineStart) + prefix + value.slice(lineStart), start + prefix.length);
   }
-  return /* @__PURE__ */ jsxs3("div", { className: "min-w-0 space-y-1", children: [
-    /* @__PURE__ */ jsxs3("div", { className: "flex flex-wrap items-center justify-between gap-x-2 gap-y-1", children: [
-      /* @__PURE__ */ jsxs3(FieldLabel, { children: [
+  return /* @__PURE__ */ jsxs4("div", { className: "min-w-0 space-y-1", children: [
+    /* @__PURE__ */ jsxs4("div", { className: "flex flex-wrap items-center justify-between gap-x-2 gap-y-1", children: [
+      /* @__PURE__ */ jsxs4(FieldLabel, { children: [
         label,
         " ",
-        /* @__PURE__ */ jsxs3("span", { className: "ml-1 font-normal normal-case text-muted-foreground/60", children: [
+        /* @__PURE__ */ jsxs4("span", { className: "ml-1 font-normal normal-case text-muted-foreground/60", children: [
           "\xB7 ",
           value.length,
           "/",
           max
         ] })
       ] }),
-      /* @__PURE__ */ jsxs3("div", { className: "flex flex-wrap items-center justify-end gap-0.5", children: [
+      /* @__PURE__ */ jsxs4("div", { className: "flex flex-wrap items-center justify-end gap-0.5", children: [
         variables && variables.length > 0 && // Opens the palette next to the preview
-        /* @__PURE__ */ jsx3(ToolbarButton, { title: "Variables", onClick: palette.open, children: /* @__PURE__ */ jsx3(Percent, { className: "h-3.5 w-3.5" }) }),
-        /* @__PURE__ */ jsx3(Popover, { trigger: /* @__PURE__ */ jsx3(ToolbarButton, { title: "Insert emoji", onClick: () => {
-        }, children: /* @__PURE__ */ jsx3(Smile, { className: "h-3.5 w-3.5" }) }), children: (close) => /* @__PURE__ */ jsx3(EmojiGrid, { onPick: (e) => {
+        /* @__PURE__ */ jsx4(ToolbarButton, { title: "Variables", onClick: palette.open, children: /* @__PURE__ */ jsx4(Percent, { className: "h-3.5 w-3.5" }) }),
+        /* @__PURE__ */ jsx4(Popover, { trigger: /* @__PURE__ */ jsx4(ToolbarButton, { title: "Insert emoji", onClick: () => {
+        }, children: /* @__PURE__ */ jsx4(Smile, { className: "h-3.5 w-3.5" }) }), children: (close) => /* @__PURE__ */ jsx4(EmojiGrid, { onPick: (e) => {
           insert(e);
           close();
         } }) }),
-        searchUsers ? /* @__PURE__ */ jsx3(Popover, { trigger: /* @__PURE__ */ jsx3(ToolbarButton, { title: "Mention a user", onClick: () => {
-        }, children: /* @__PURE__ */ jsx3(AtSign, { className: "h-3.5 w-3.5" }) }), children: (close) => /* @__PURE__ */ jsx3(UserPicker, { onPick: (id) => {
+        searchUsers ? /* @__PURE__ */ jsx4(Popover, { trigger: /* @__PURE__ */ jsx4(ToolbarButton, { title: "Mention a user", onClick: () => {
+        }, children: /* @__PURE__ */ jsx4(AtSign, { className: "h-3.5 w-3.5" }) }), children: (close) => /* @__PURE__ */ jsx4(UserPicker, { onPick: (id) => {
           insert(`<@${id}>`);
           close();
-        } }) }) : /* @__PURE__ */ jsx3(ToolbarButton, { title: "Mention", onClick: () => insert("<@USER_ID>"), children: /* @__PURE__ */ jsx3(AtSign, { className: "h-3.5 w-3.5" }) }),
-        channels && channels.length > 0 ? /* @__PURE__ */ jsx3(Popover, { trigger: /* @__PURE__ */ jsx3(ToolbarButton, { title: "Mention a channel", onClick: () => {
-        }, children: /* @__PURE__ */ jsx3(Hash, { className: "h-3.5 w-3.5" }) }), children: (close) => /* @__PURE__ */ jsx3(ChannelPicker, { onPick: (id) => {
+        } }) }) : /* @__PURE__ */ jsx4(ToolbarButton, { title: "Mention", onClick: () => insert("<@USER_ID>"), children: /* @__PURE__ */ jsx4(AtSign, { className: "h-3.5 w-3.5" }) }),
+        channels && channels.length > 0 ? /* @__PURE__ */ jsx4(Popover, { trigger: /* @__PURE__ */ jsx4(ToolbarButton, { title: "Mention a channel", onClick: () => {
+        }, children: /* @__PURE__ */ jsx4(Hash, { className: "h-3.5 w-3.5" }) }), children: (close) => /* @__PURE__ */ jsx4(ChannelPicker, { onPick: (id) => {
           insert(`<#${id}>`);
           close();
-        } }) }) : /* @__PURE__ */ jsx3(ToolbarButton, { title: "Channel", onClick: () => insert("<#CHANNEL_ID>"), children: /* @__PURE__ */ jsx3(Hash, { className: "h-3.5 w-3.5" }) }),
-        /* @__PURE__ */ jsx3("span", { className: "mx-0.5 h-4 w-px bg-border/60" }),
-        /* @__PURE__ */ jsx3(ToolbarButton, { title: "Bold", onClick: () => wrap("**"), children: /* @__PURE__ */ jsx3(Bold, { className: "h-3.5 w-3.5" }) }),
-        /* @__PURE__ */ jsx3(ToolbarButton, { title: "Italic", onClick: () => wrap("*"), children: /* @__PURE__ */ jsx3(Italic, { className: "h-3.5 w-3.5" }) }),
-        /* @__PURE__ */ jsx3(ToolbarButton, { title: "Strikethrough", onClick: () => wrap("~~"), children: /* @__PURE__ */ jsx3(Strikethrough, { className: "h-3.5 w-3.5" }) }),
-        /* @__PURE__ */ jsx3(ToolbarButton, { title: "Heading", onClick: () => prefixLine("## "), children: /* @__PURE__ */ jsx3(Heading, { className: "h-3.5 w-3.5" }) }),
-        /* @__PURE__ */ jsx3(ToolbarButton, { title: "Bullet list", onClick: () => prefixLine("- "), children: /* @__PURE__ */ jsx3(List, { className: "h-3.5 w-3.5" }) })
+        } }) }) : /* @__PURE__ */ jsx4(ToolbarButton, { title: "Channel", onClick: () => insert("<#CHANNEL_ID>"), children: /* @__PURE__ */ jsx4(Hash, { className: "h-3.5 w-3.5" }) }),
+        /* @__PURE__ */ jsx4("span", { className: "mx-0.5 h-4 w-px bg-border/60" }),
+        /* @__PURE__ */ jsx4(ToolbarButton, { title: "Bold", onClick: () => wrap("**"), children: /* @__PURE__ */ jsx4(Bold, { className: "h-3.5 w-3.5" }) }),
+        /* @__PURE__ */ jsx4(ToolbarButton, { title: "Italic", onClick: () => wrap("*"), children: /* @__PURE__ */ jsx4(Italic, { className: "h-3.5 w-3.5" }) }),
+        /* @__PURE__ */ jsx4(ToolbarButton, { title: "Strikethrough", onClick: () => wrap("~~"), children: /* @__PURE__ */ jsx4(Strikethrough, { className: "h-3.5 w-3.5" }) }),
+        /* @__PURE__ */ jsx4(ToolbarButton, { title: "Heading", onClick: () => prefixLine("## "), children: /* @__PURE__ */ jsx4(Heading, { className: "h-3.5 w-3.5" }) }),
+        /* @__PURE__ */ jsx4(ToolbarButton, { title: "Bullet list", onClick: () => prefixLine("- "), children: /* @__PURE__ */ jsx4(List, { className: "h-3.5 w-3.5" }) })
       ] })
     ] }),
-    /* @__PURE__ */ jsxs3("div", { className: "relative", children: [
-      /* @__PURE__ */ jsx3(
-        Textarea,
+    /* @__PURE__ */ jsxs4("div", { className: "relative", children: [
+      /* @__PURE__ */ jsx4(
+        EmojiTextarea,
         {
           ref,
           rows,
+          max,
           value,
           placeholder,
-          onChange: (e) => {
-            const v = e.target.value.slice(0, max);
-            onChange(v);
-            refreshAutocomplete(v, e.target.selectionStart ?? v.length);
-          },
+          ariaLabel: label,
+          onChange,
+          onCaret: refreshAutocomplete,
           onKeyDown,
-          onBlur: () => setAc(null),
-          onClick: (e) => refreshAutocomplete(value, e.target.selectionStart ?? 0)
+          onBlur: () => setAc(null)
         }
       ),
-      ac && acMatches.length > 0 && /* @__PURE__ */ jsxs3("div", { className: "absolute left-0 top-full z-50 mt-1 w-96 max-w-[calc(100vw-3rem)] rounded-md border border-border/60 bg-popover p-1 shadow-lg", children: [
-        acMatches.map((v, i) => /* @__PURE__ */ jsxs3(
+      ac && acMatches.length > 0 && /* @__PURE__ */ jsxs4("div", { className: "absolute left-0 top-full z-50 mt-1 w-96 max-w-[calc(100vw-3rem)] rounded-md border border-border/60 bg-popover p-1 shadow-lg", children: [
+        acMatches.map((v, i) => /* @__PURE__ */ jsxs4(
           "button",
           {
             type: "button",
@@ -583,15 +900,15 @@ function MarkdownField({
             onClick: () => acceptVariable(v.name),
             className: `flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs ${i === acIndex ? "bg-muted/50" : "hover:bg-muted/50"}`,
             children: [
-              isImageVariable(v.name) && /* @__PURE__ */ jsx3(ImageIcon, { className: "h-3 w-3 shrink-0 text-muted-foreground" }),
-              /* @__PURE__ */ jsx3("span", { className: "shrink-0 font-mono font-semibold text-amber-300", children: wrapVariable(v.name, syntax) }),
-              /* @__PURE__ */ jsx3("span", { className: "shrink-0 rounded bg-dbx-accent-500/15 px-1 py-px text-[9px] font-bold uppercase tracking-wide text-dbx-accent-300", children: v.group ?? "Message" }),
-              v.description && /* @__PURE__ */ jsx3("span", { className: "ml-auto min-w-0 truncate text-right text-[10px] text-muted-foreground", children: v.description })
+              isImageVariable(v.name) && /* @__PURE__ */ jsx4(ImageIcon, { className: "h-3 w-3 shrink-0 text-muted-foreground" }),
+              /* @__PURE__ */ jsx4("span", { className: "shrink-0 font-mono font-semibold text-amber-300", children: wrapVariable(v.name, syntax) }),
+              /* @__PURE__ */ jsx4("span", { className: "shrink-0 rounded bg-dbx-accent-500/15 px-1 py-px text-[9px] font-bold uppercase tracking-wide text-dbx-accent-300", children: v.group ?? "Message" }),
+              v.description && /* @__PURE__ */ jsx4("span", { className: "ml-auto min-w-0 truncate text-right text-[10px] text-muted-foreground", children: v.description })
             ]
           },
           v.name
         )),
-        /* @__PURE__ */ jsx3("p", { className: "border-t border-border/60 px-2 pb-0.5 pt-1 text-[10px] text-muted-foreground", children: "Enter to insert, Esc to close" })
+        /* @__PURE__ */ jsx4("p", { className: "border-t border-border/60 px-2 pb-0.5 pt-1 text-[10px] text-muted-foreground", children: "Enter to insert, Esc to close" })
       ] })
     ] })
   ] });
@@ -603,23 +920,23 @@ function TextField({
   placeholder,
   max
 }) {
-  return /* @__PURE__ */ jsxs3("div", { className: "space-y-1", children: [
-    /* @__PURE__ */ jsxs3(FieldLabel, { children: [
+  return /* @__PURE__ */ jsxs4("div", { className: "space-y-1", children: [
+    /* @__PURE__ */ jsxs4(FieldLabel, { children: [
       label,
-      max != null && /* @__PURE__ */ jsxs3("span", { className: "ml-1 font-normal normal-case text-muted-foreground/60", children: [
+      max != null && /* @__PURE__ */ jsxs4("span", { className: "ml-1 font-normal normal-case text-muted-foreground/60", children: [
         "\xB7 ",
         value.length,
         "/",
         max
       ] })
     ] }),
-    /* @__PURE__ */ jsx3(Input, { value, placeholder, onChange: (e) => onChange(max != null ? e.target.value.slice(0, max) : e.target.value) })
+    /* @__PURE__ */ jsx4(Input, { value, placeholder, onChange: (e) => onChange(max != null ? e.target.value.slice(0, max) : e.target.value) })
   ] });
 }
 function SwitchRow({ label, checked, onChange }) {
-  return /* @__PURE__ */ jsxs3("label", { className: "flex cursor-pointer items-center justify-between gap-2 py-1", children: [
-    /* @__PURE__ */ jsx3("span", { className: "min-w-0 text-xs text-muted-foreground", children: label }),
-    /* @__PURE__ */ jsx3("span", { className: "shrink-0", children: /* @__PURE__ */ jsx3(Switch, { checked, onCheckedChange: onChange }) })
+  return /* @__PURE__ */ jsxs4("label", { className: "flex cursor-pointer items-center justify-between gap-2 py-1", children: [
+    /* @__PURE__ */ jsx4("span", { className: "min-w-0 text-xs text-muted-foreground", children: label }),
+    /* @__PURE__ */ jsx4("span", { className: "shrink-0", children: /* @__PURE__ */ jsx4(Switch, { checked, onCheckedChange: onChange }) })
   ] });
 }
 function SegmentToggle({
@@ -627,7 +944,7 @@ function SegmentToggle({
   value,
   onChange
 }) {
-  return /* @__PURE__ */ jsx3("div", { className: "flex flex-wrap gap-1 rounded-md border border-border/60 bg-muted/20 p-1", children: options.map((o) => /* @__PURE__ */ jsx3(
+  return /* @__PURE__ */ jsx4("div", { className: "flex flex-wrap gap-1 rounded-md border border-border/60 bg-muted/20 p-1", children: options.map((o) => /* @__PURE__ */ jsx4(
     "button",
     {
       type: "button",
@@ -645,7 +962,7 @@ function ImageField({
   onUpload,
   placeholder
 }) {
-  const inputRef = useRef2(null);
+  const inputRef = useRef3(null);
   const [busy, setBusy] = useState2(false);
   const [error, setError] = useState2(null);
   const [pickerOpen, setPickerOpen] = useState2(false);
@@ -665,15 +982,15 @@ function ImageField({
     }
   }
   const isImg = /^https?:\/\/.+/.test(value);
-  return /* @__PURE__ */ jsxs3("div", { className: "space-y-1", children: [
-    /* @__PURE__ */ jsx3(FieldLabel, { children: label }),
-    /* @__PURE__ */ jsxs3("div", { className: "flex items-start gap-2", children: [
-      isImg ? /* @__PURE__ */ jsx3("img", { src: value, alt: "", className: "h-12 w-12 shrink-0 rounded border border-border/60 object-cover" }) : /* @__PURE__ */ jsx3("div", { className: "flex h-12 w-12 shrink-0 items-center justify-center rounded border border-border/60 bg-muted/30 text-muted-foreground", children: /* @__PURE__ */ jsx3(ImageIcon, { className: "h-5 w-5" }) }),
-      /* @__PURE__ */ jsxs3("div", { className: "min-w-0 flex-1 space-y-1.5", children: [
-        /* @__PURE__ */ jsx3(Input, { value, placeholder: placeholder ?? "https://\u2026/image.png", onChange: (e) => onChange(e.target.value) }),
-        /* @__PURE__ */ jsxs3("div", { className: "flex flex-wrap gap-1.5", children: [
-          onUpload && /* @__PURE__ */ jsxs3(Fragment2, { children: [
-            /* @__PURE__ */ jsx3(
+  return /* @__PURE__ */ jsxs4("div", { className: "space-y-1", children: [
+    /* @__PURE__ */ jsx4(FieldLabel, { children: label }),
+    /* @__PURE__ */ jsxs4("div", { className: "flex items-start gap-2", children: [
+      isImg ? /* @__PURE__ */ jsx4("img", { src: value, alt: "", className: "h-12 w-12 shrink-0 rounded border border-border/60 object-cover" }) : /* @__PURE__ */ jsx4("div", { className: "flex h-12 w-12 shrink-0 items-center justify-center rounded border border-border/60 bg-muted/30 text-muted-foreground", children: /* @__PURE__ */ jsx4(ImageIcon, { className: "h-5 w-5" }) }),
+      /* @__PURE__ */ jsxs4("div", { className: "min-w-0 flex-1 space-y-1.5", children: [
+        /* @__PURE__ */ jsx4(Input, { value, placeholder: placeholder ?? "https://\u2026/image.png", onChange: (e) => onChange(e.target.value) }),
+        /* @__PURE__ */ jsxs4("div", { className: "flex flex-wrap gap-1.5", children: [
+          onUpload && /* @__PURE__ */ jsxs4(Fragment2, { children: [
+            /* @__PURE__ */ jsx4(
               "input",
               {
                 ref: inputRef,
@@ -683,20 +1000,20 @@ function ImageField({
                 onChange: (e) => handleFile(e.target.files?.[0])
               }
             ),
-            /* @__PURE__ */ jsxs3(Button, { type: "button", variant: "outline", size: "sm", disabled: busy, onClick: () => inputRef.current?.click(), children: [
-              busy ? /* @__PURE__ */ jsx3(Loader22, { className: "mr-1 h-3 w-3 animate-spin" }) : /* @__PURE__ */ jsx3(Upload, { className: "mr-1 h-3 w-3" }),
+            /* @__PURE__ */ jsxs4(Button, { type: "button", variant: "outline", size: "sm", disabled: busy, onClick: () => inputRef.current?.click(), children: [
+              busy ? /* @__PURE__ */ jsx4(Loader22, { className: "mr-1 h-3 w-3 animate-spin" }) : /* @__PURE__ */ jsx4(Upload, { className: "mr-1 h-3 w-3" }),
               busy ? "Uploading\u2026" : "Upload image"
             ] })
           ] }),
-          media && /* @__PURE__ */ jsxs3(Button, { type: "button", variant: "outline", size: "sm", onClick: () => setPickerOpen(true), children: [
-            /* @__PURE__ */ jsx3(Images, { className: "mr-1 h-3 w-3" }),
+          media && /* @__PURE__ */ jsxs4(Button, { type: "button", variant: "outline", size: "sm", onClick: () => setPickerOpen(true), children: [
+            /* @__PURE__ */ jsx4(Images, { className: "mr-1 h-3 w-3" }),
             " Library"
           ] })
         ] }),
-        error && /* @__PURE__ */ jsx3("p", { className: "text-[11px] text-red-400", children: error })
+        error && /* @__PURE__ */ jsx4("p", { className: "text-[11px] text-red-400", children: error })
       ] })
     ] }),
-    media && /* @__PURE__ */ jsx3(MediaPicker, { media, open: pickerOpen, onOpenChange: setPickerOpen, onSelect: onChange })
+    media && /* @__PURE__ */ jsx4(MediaPicker, { media, open: pickerOpen, onOpenChange: setPickerOpen, onSelect: onChange })
   ] });
 }
 function FileField({
@@ -706,7 +1023,7 @@ function FileField({
   onUpload,
   placeholder
 }) {
-  const inputRef = useRef2(null);
+  const inputRef = useRef3(null);
   const [busy, setBusy] = useState2(false);
   const [error, setError] = useState2(null);
   async function handleFile(file) {
@@ -723,26 +1040,26 @@ function FileField({
     }
   }
   const fileName = value.replace(/^attachment:\/\//, "").split("/").pop() || "";
-  return /* @__PURE__ */ jsxs3("div", { className: "space-y-1", children: [
-    /* @__PURE__ */ jsx3(FieldLabel, { children: label }),
-    /* @__PURE__ */ jsxs3("div", { className: "flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5", children: [
-      /* @__PURE__ */ jsx3(Paperclip, { className: "h-4 w-4 shrink-0 text-muted-foreground" }),
-      /* @__PURE__ */ jsx3("span", { className: "min-w-0 flex-1 truncate text-sm", children: fileName || /* @__PURE__ */ jsx3("span", { className: "text-muted-foreground", children: "No file" }) }),
-      onUpload && /* @__PURE__ */ jsxs3(Fragment2, { children: [
-        /* @__PURE__ */ jsx3("input", { ref: inputRef, type: "file", className: "hidden", onChange: (e) => handleFile(e.target.files?.[0]) }),
-        /* @__PURE__ */ jsxs3(Button, { type: "button", variant: "outline", size: "sm", disabled: busy, onClick: () => inputRef.current?.click(), children: [
-          busy ? /* @__PURE__ */ jsx3(Loader22, { className: "mr-1 h-3 w-3 animate-spin" }) : /* @__PURE__ */ jsx3(Upload, { className: "mr-1 h-3 w-3" }),
+  return /* @__PURE__ */ jsxs4("div", { className: "space-y-1", children: [
+    /* @__PURE__ */ jsx4(FieldLabel, { children: label }),
+    /* @__PURE__ */ jsxs4("div", { className: "flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5", children: [
+      /* @__PURE__ */ jsx4(Paperclip, { className: "h-4 w-4 shrink-0 text-muted-foreground" }),
+      /* @__PURE__ */ jsx4("span", { className: "min-w-0 flex-1 truncate text-sm", children: fileName || /* @__PURE__ */ jsx4("span", { className: "text-muted-foreground", children: "No file" }) }),
+      onUpload && /* @__PURE__ */ jsxs4(Fragment2, { children: [
+        /* @__PURE__ */ jsx4("input", { ref: inputRef, type: "file", className: "hidden", onChange: (e) => handleFile(e.target.files?.[0]) }),
+        /* @__PURE__ */ jsxs4(Button, { type: "button", variant: "outline", size: "sm", disabled: busy, onClick: () => inputRef.current?.click(), children: [
+          busy ? /* @__PURE__ */ jsx4(Loader22, { className: "mr-1 h-3 w-3 animate-spin" }) : /* @__PURE__ */ jsx4(Upload, { className: "mr-1 h-3 w-3" }),
           busy ? "Uploading\u2026" : "Upload file"
         ] })
       ] })
     ] }),
-    /* @__PURE__ */ jsx3(Input, { value, placeholder: placeholder ?? "attachment://file.png", onChange: (e) => onChange(e.target.value) }),
-    error && /* @__PURE__ */ jsx3("p", { className: "text-[11px] text-red-400", children: error })
+    /* @__PURE__ */ jsx4(Input, { value, placeholder: placeholder ?? "attachment://file.png", onChange: (e) => onChange(e.target.value) }),
+    error && /* @__PURE__ */ jsx4("p", { className: "text-[11px] text-red-400", children: error })
   ] });
 }
 
 // src/ButtonActions.tsx
-import { Fragment as Fragment3, jsx as jsx4, jsxs as jsxs4 } from "react/jsx-runtime";
+import { Fragment as Fragment3, jsx as jsx5, jsxs as jsxs5 } from "react/jsx-runtime";
 var BUTTON_ACTION_OPTIONS = [
   { value: "none", label: "Nothing" },
   { value: "reply", label: "Private reply" },
@@ -754,10 +1071,10 @@ function DiscordActionEditor({ action: raw, onChange, variables }) {
   const syntax = useSyntax();
   const action = raw ?? { type: "none" };
   const setAction = (patch) => onChange({ ...action, ...patch });
-  return /* @__PURE__ */ jsxs4("div", { className: "space-y-2 rounded-md border border-border/60 bg-background/40 p-2", children: [
-    /* @__PURE__ */ jsxs4("div", { className: "space-y-1", children: [
-      /* @__PURE__ */ jsx4(FieldLabel, { children: "On click" }),
-      /* @__PURE__ */ jsx4(
+  return /* @__PURE__ */ jsxs5("div", { className: "space-y-2 rounded-md border border-border/60 bg-background/40 p-2", children: [
+    /* @__PURE__ */ jsxs5("div", { className: "space-y-1", children: [
+      /* @__PURE__ */ jsx5(FieldLabel, { children: "On click" }),
+      /* @__PURE__ */ jsx5(
         SegmentToggle,
         {
           options: BUTTON_ACTION_OPTIONS,
@@ -766,18 +1083,18 @@ function DiscordActionEditor({ action: raw, onChange, variables }) {
         }
       )
     ] }),
-    action.type !== "none" && /* @__PURE__ */ jsxs4(Fragment3, { children: [
-      action.type === "send_channel" && /* @__PURE__ */ jsxs4("div", { className: "space-y-1", children: [
-        /* @__PURE__ */ jsx4(FieldLabel, { children: "Channel" }),
-        /* @__PURE__ */ jsxs4(
+    action.type !== "none" && /* @__PURE__ */ jsxs5(Fragment3, { children: [
+      action.type === "send_channel" && /* @__PURE__ */ jsxs5("div", { className: "space-y-1", children: [
+        /* @__PURE__ */ jsx5(FieldLabel, { children: "Channel" }),
+        /* @__PURE__ */ jsxs5(
           "select",
           {
             value: action.channelId ?? "",
             onChange: (e) => setAction({ channelId: e.target.value || void 0 }),
             className: "h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs",
             children: [
-              /* @__PURE__ */ jsx4("option", { value: "", children: "Choose a channel\u2026" }),
-              (channels ?? []).map((c) => /* @__PURE__ */ jsxs4("option", { value: c.id, children: [
+              /* @__PURE__ */ jsx5("option", { value: "", children: "Choose a channel\u2026" }),
+              (channels ?? []).map((c) => /* @__PURE__ */ jsxs5("option", { value: c.id, children: [
                 "# ",
                 c.name
               ] }, c.id))
@@ -785,9 +1102,9 @@ function DiscordActionEditor({ action: raw, onChange, variables }) {
           }
         )
       ] }),
-      editRichMessage && /* @__PURE__ */ jsxs4("div", { className: "space-y-1", children: [
-        /* @__PURE__ */ jsx4(FieldLabel, { children: "Response type" }),
-        /* @__PURE__ */ jsx4(
+      editRichMessage && /* @__PURE__ */ jsxs5("div", { className: "space-y-1", children: [
+        /* @__PURE__ */ jsx5(FieldLabel, { children: "Response type" }),
+        /* @__PURE__ */ jsx5(
           SegmentToggle,
           {
             options: [{ value: "text", label: "Text" }, { value: "rich", label: "Rich message" }],
@@ -796,23 +1113,23 @@ function DiscordActionEditor({ action: raw, onChange, variables }) {
           }
         )
       ] }),
-      action.rich && editRichMessage ? /* @__PURE__ */ jsxs4("div", { className: "flex items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5", children: [
-        /* @__PURE__ */ jsx4("span", { className: "text-xs text-muted-foreground", children: action.model && action.model.components.length > 0 ? `Rich message \xB7 ${action.model.components.length} block${action.model.components.length === 1 ? "" : "s"}` : "No message yet" }),
-        /* @__PURE__ */ jsxs4(
+      action.rich && editRichMessage ? /* @__PURE__ */ jsxs5("div", { className: "flex items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5", children: [
+        /* @__PURE__ */ jsx5("span", { className: "text-xs text-muted-foreground", children: action.model && action.model.components.length > 0 ? `Rich message \xB7 ${action.model.components.length} block${action.model.components.length === 1 ? "" : "s"}` : "No message yet" }),
+        /* @__PURE__ */ jsxs5(
           Button,
           {
             variant: "outline",
             size: "sm",
             onClick: () => editRichMessage(action.model, (model) => setAction({ model })),
             children: [
-              /* @__PURE__ */ jsx4(Pencil, { className: "mr-1 h-3 w-3" }),
+              /* @__PURE__ */ jsx5(Pencil, { className: "mr-1 h-3 w-3" }),
               " ",
               action.model ? "Edit" : "Create",
               " message"
             ]
           }
         )
-      ] }) : /* @__PURE__ */ jsx4(
+      ] }) : /* @__PURE__ */ jsx5(
         MarkdownField,
         {
           label: action.type === "send_dm" ? "DM message" : action.type === "reply" ? "Reply message" : "Message to post",
@@ -824,7 +1141,7 @@ function DiscordActionEditor({ action: raw, onChange, variables }) {
           placeholder: `Hey ${wrapVariable("user", syntax)}, thanks for clicking!`
         }
       ),
-      action.type === "reply" && /* @__PURE__ */ jsx4(
+      action.type === "reply" && /* @__PURE__ */ jsx5(
         SwitchRow,
         {
           label: "Private reply (only the user who clicked sees it)",
@@ -832,13 +1149,13 @@ function DiscordActionEditor({ action: raw, onChange, variables }) {
           onChange: (v) => setAction({ ephemeral: v })
         }
       ),
-      /* @__PURE__ */ jsx4("p", { className: "text-[11px] text-muted-foreground", children: "Needs a custom ID. The action is saved when the message is sent." })
+      /* @__PURE__ */ jsx5("p", { className: "text-[11px] text-muted-foreground", children: "Needs a custom ID. The action is saved when the message is sent." })
     ] })
   ] });
 }
 
 // src/BlockBody.tsx
-import { jsx as jsx5, jsxs as jsxs5 } from "react/jsx-runtime";
+import { jsx as jsx6, jsxs as jsxs6 } from "react/jsx-runtime";
 function ButtonEditor({ button, onChange, variables }) {
   const set = (patch) => onChange({ ...button, ...patch });
   const { savedActions, actionEditor } = useBuilderIntegrations();
@@ -849,10 +1166,10 @@ function ButtonEditor({ button, onChange, variables }) {
     if (s) set({ customId: s.customId, action: s.action });
   };
   const matchesSaved = (savedActions ?? []).some((s) => s.customId === (button.customId ?? "").trim());
-  return /* @__PURE__ */ jsxs5("div", { className: "space-y-2 rounded-md border border-border/60 bg-muted/20 p-2", children: [
-    /* @__PURE__ */ jsxs5("div", { className: "space-y-1", children: [
-      /* @__PURE__ */ jsx5(FieldLabel, { children: "Style" }),
-      /* @__PURE__ */ jsx5(
+  return /* @__PURE__ */ jsxs6("div", { className: "space-y-2 rounded-md border border-border/60 bg-muted/20 p-2", children: [
+    /* @__PURE__ */ jsxs6("div", { className: "space-y-1", children: [
+      /* @__PURE__ */ jsx6(FieldLabel, { children: "Style" }),
+      /* @__PURE__ */ jsx6(
         SegmentToggle,
         {
           options: BUTTON_STYLE_OPTIONS,
@@ -864,12 +1181,12 @@ function ButtonEditor({ button, onChange, variables }) {
         }
       )
     ] }),
-    /* @__PURE__ */ jsxs5("div", { className: "grid grid-cols-[minmax(0,1fr)_auto] gap-2", children: [
-      /* @__PURE__ */ jsx5(TextField, { label: "Label", value: button.label ?? "", onChange: (v) => set({ label: v }), placeholder: "Click me", max: LIMITS.buttonLabelChars }),
-      /* @__PURE__ */ jsx5(TextField, { label: "Emoji", value: button.emoji ?? "", onChange: (v) => set({ emoji: v || void 0 }), placeholder: "\u{1F389}" })
+    /* @__PURE__ */ jsxs6("div", { className: "grid grid-cols-[minmax(0,1fr)_auto] gap-2", children: [
+      /* @__PURE__ */ jsx6(TextField, { label: "Label", value: button.label ?? "", onChange: (v) => set({ label: v }), placeholder: "Click me", max: LIMITS.buttonLabelChars }),
+      /* @__PURE__ */ jsx6(TextField, { label: "Emoji", value: button.emoji ?? "", onChange: (v) => set({ emoji: v || void 0 }), placeholder: "\u{1F389}" })
     ] }),
-    button.style === "link" ? /* @__PURE__ */ jsx5(TextField, { label: "URL", value: button.url ?? "", onChange: (v) => set({ url: v }), placeholder: "https://example.com" }) : /* @__PURE__ */ jsxs5("div", { className: "space-y-1", children: [
-      savedActions && savedActions.length > 0 && /* @__PURE__ */ jsx5("div", { className: "flex items-center gap-2", children: /* @__PURE__ */ jsxs5(
+    button.style === "link" ? /* @__PURE__ */ jsx6(TextField, { label: "URL", value: button.url ?? "", onChange: (v) => set({ url: v }), placeholder: "https://example.com" }) : /* @__PURE__ */ jsxs6("div", { className: "space-y-1", children: [
+      savedActions && savedActions.length > 0 && /* @__PURE__ */ jsx6("div", { className: "flex items-center gap-2", children: /* @__PURE__ */ jsxs6(
         "select",
         {
           value: "",
@@ -879,13 +1196,13 @@ function ButtonEditor({ button, onChange, variables }) {
           className: "h-8 flex-1 rounded-md border border-border/60 bg-background px-2 text-xs",
           title: "Use a saved button action",
           children: [
-            /* @__PURE__ */ jsx5("option", { value: "", children: "Use a saved action\u2026" }),
-            savedActions.map((s) => /* @__PURE__ */ jsx5("option", { value: s.customId, children: s.label || s.customId }, s.customId))
+            /* @__PURE__ */ jsx6("option", { value: "", children: "Use a saved action\u2026" }),
+            savedActions.map((s) => /* @__PURE__ */ jsx6("option", { value: s.customId, children: s.label || s.customId }, s.customId))
           ]
         }
       ) }),
-      /* @__PURE__ */ jsx5(FieldLabel, { children: "Custom ID (identifies the button for the bot)" }),
-      /* @__PURE__ */ jsx5(
+      /* @__PURE__ */ jsx6(FieldLabel, { children: "Custom ID (identifies the button for the bot)" }),
+      /* @__PURE__ */ jsx6(
         "input",
         {
           list: listId,
@@ -895,8 +1212,8 @@ function ButtonEditor({ button, onChange, variables }) {
           className: "h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs"
         }
       ),
-      /* @__PURE__ */ jsx5("datalist", { id: listId, children: (savedActions ?? []).map((s) => /* @__PURE__ */ jsx5("option", { value: s.customId, children: s.label || s.customId }, s.customId)) }),
-      matchesSaved && /* @__PURE__ */ jsx5(
+      /* @__PURE__ */ jsx6("datalist", { id: listId, children: (savedActions ?? []).map((s) => /* @__PURE__ */ jsx6("option", { value: s.customId, children: s.label || s.customId }, s.customId)) }),
+      matchesSaved && /* @__PURE__ */ jsx6(
         "button",
         {
           type: "button",
@@ -906,7 +1223,7 @@ function ButtonEditor({ button, onChange, variables }) {
         }
       )
     ] }),
-    button.style !== "link" && ActionEditor && /* @__PURE__ */ jsx5(
+    button.style !== "link" && ActionEditor && /* @__PURE__ */ jsx6(
       ActionEditor,
       {
         action: button.action,
@@ -914,15 +1231,15 @@ function ButtonEditor({ button, onChange, variables }) {
         variables
       }
     ),
-    /* @__PURE__ */ jsx5(SwitchRow, { label: "Disabled", checked: !!button.disabled, onChange: (v) => set({ disabled: v }) })
+    /* @__PURE__ */ jsx6(SwitchRow, { label: "Disabled", checked: !!button.disabled, onChange: (v) => set({ disabled: v }) })
   ] });
 }
 function ContainerProps({ node, onChange }) {
-  return /* @__PURE__ */ jsxs5("div", { className: "space-y-2", children: [
-    /* @__PURE__ */ jsxs5("div", { className: "space-y-1", children: [
-      /* @__PURE__ */ jsx5(FieldLabel, { children: "Accent color" }),
-      /* @__PURE__ */ jsxs5("div", { className: "flex flex-wrap items-center gap-1.5", children: [
-        /* @__PURE__ */ jsx5(
+  return /* @__PURE__ */ jsxs6("div", { className: "space-y-2", children: [
+    /* @__PURE__ */ jsxs6("div", { className: "space-y-1", children: [
+      /* @__PURE__ */ jsx6(FieldLabel, { children: "Accent color" }),
+      /* @__PURE__ */ jsxs6("div", { className: "flex flex-wrap items-center gap-1.5", children: [
+        /* @__PURE__ */ jsx6(
           "button",
           {
             type: "button",
@@ -931,7 +1248,7 @@ function ContainerProps({ node, onChange }) {
             children: "None"
           }
         ),
-        ACCENT_PRESETS.map((p) => /* @__PURE__ */ jsx5(
+        ACCENT_PRESETS.map((p) => /* @__PURE__ */ jsx6(
           "button",
           {
             type: "button",
@@ -942,7 +1259,7 @@ function ContainerProps({ node, onChange }) {
           },
           p.value
         )),
-        /* @__PURE__ */ jsx5(
+        /* @__PURE__ */ jsx6(
           "input",
           {
             type: "color",
@@ -953,18 +1270,18 @@ function ContainerProps({ node, onChange }) {
         )
       ] })
     ] }),
-    /* @__PURE__ */ jsx5(SwitchRow, { label: "Spoiler (blur until clicked)", checked: !!node.spoiler, onChange: (v) => onChange({ ...node, spoiler: v }) })
+    /* @__PURE__ */ jsx6(SwitchRow, { label: "Spoiler (blur until clicked)", checked: !!node.spoiler, onChange: (v) => onChange({ ...node, spoiler: v }) })
   ] });
 }
 function TextBody({ node, onChange, variables }) {
-  return /* @__PURE__ */ jsx5(MarkdownField, { value: node.content, onChange: (content) => onChange({ ...node, content }), variables, rows: 5, placeholder: "## Heading\nBody text with **bold**\u2026" });
+  return /* @__PURE__ */ jsx6(MarkdownField, { value: node.content, onChange: (content) => onChange({ ...node, content }), variables, rows: 5, placeholder: "## Heading\nBody text with **bold**\u2026" });
 }
 function SeparatorBody({ node, onChange }) {
-  return /* @__PURE__ */ jsxs5("div", { className: "flex flex-wrap items-center gap-x-6 gap-y-1", children: [
-    /* @__PURE__ */ jsx5(SwitchRow, { label: "Divider line", checked: node.divider, onChange: (v) => onChange({ ...node, divider: v }) }),
-    /* @__PURE__ */ jsxs5("div", { className: "flex items-center gap-2", children: [
-      /* @__PURE__ */ jsx5(FieldLabel, { children: "Spacing" }),
-      /* @__PURE__ */ jsx5(
+  return /* @__PURE__ */ jsxs6("div", { className: "flex flex-wrap items-center gap-x-6 gap-y-1", children: [
+    /* @__PURE__ */ jsx6(SwitchRow, { label: "Divider line", checked: node.divider, onChange: (v) => onChange({ ...node, divider: v }) }),
+    /* @__PURE__ */ jsxs6("div", { className: "flex items-center gap-2", children: [
+      /* @__PURE__ */ jsx6(FieldLabel, { children: "Spacing" }),
+      /* @__PURE__ */ jsx6(
         SegmentToggle,
         {
           options: [{ value: "small", label: "Small" }, { value: "large", label: "Large" }],
@@ -977,20 +1294,20 @@ function SeparatorBody({ node, onChange }) {
 }
 function SectionBody({ node, onChange, variables, onUpload }) {
   const setText = (i, v) => onChange({ ...node, texts: node.texts.map((t, k) => k === i ? v : t) });
-  return /* @__PURE__ */ jsxs5("div", { className: "space-y-3", children: [
-    /* @__PURE__ */ jsxs5("div", { className: "space-y-2", children: [
-      node.texts.map((t, i) => /* @__PURE__ */ jsxs5("div", { className: "flex items-start gap-1", children: [
-        /* @__PURE__ */ jsx5("div", { className: "min-w-0 flex-1", children: /* @__PURE__ */ jsx5(MarkdownField, { label: `Text line ${i + 1}`, value: t, onChange: (v) => setText(i, v), variables, rows: 2 }) }),
-        node.texts.length > 1 && /* @__PURE__ */ jsx5(Button, { variant: "ghost", size: "icon", className: "mt-5", onClick: () => onChange({ ...node, texts: node.texts.filter((_, k) => k !== i) }), children: /* @__PURE__ */ jsx5(Trash22, { className: "h-4 w-4 text-red-400" }) })
+  return /* @__PURE__ */ jsxs6("div", { className: "space-y-3", children: [
+    /* @__PURE__ */ jsxs6("div", { className: "space-y-2", children: [
+      node.texts.map((t, i) => /* @__PURE__ */ jsxs6("div", { className: "flex items-start gap-1", children: [
+        /* @__PURE__ */ jsx6("div", { className: "min-w-0 flex-1", children: /* @__PURE__ */ jsx6(MarkdownField, { label: `Text line ${i + 1}`, value: t, onChange: (v) => setText(i, v), variables, rows: 2 }) }),
+        node.texts.length > 1 && /* @__PURE__ */ jsx6(Button, { variant: "ghost", size: "icon", className: "mt-5", onClick: () => onChange({ ...node, texts: node.texts.filter((_, k) => k !== i) }), children: /* @__PURE__ */ jsx6(Trash22, { className: "h-4 w-4 text-red-400" }) })
       ] }, i)),
-      node.texts.length < LIMITS.sectionTexts && /* @__PURE__ */ jsxs5(Button, { variant: "outline", size: "sm", onClick: () => onChange({ ...node, texts: [...node.texts, ""] }), children: [
-        /* @__PURE__ */ jsx5(Plus, { className: "mr-1 h-3 w-3" }),
+      node.texts.length < LIMITS.sectionTexts && /* @__PURE__ */ jsxs6(Button, { variant: "outline", size: "sm", onClick: () => onChange({ ...node, texts: [...node.texts, ""] }), children: [
+        /* @__PURE__ */ jsx6(Plus, { className: "mr-1 h-3 w-3" }),
         " Add line"
       ] })
     ] }),
-    /* @__PURE__ */ jsxs5("div", { className: "space-y-1", children: [
-      /* @__PURE__ */ jsx5(FieldLabel, { children: "Accessory" }),
-      /* @__PURE__ */ jsx5(
+    /* @__PURE__ */ jsxs6("div", { className: "space-y-1", children: [
+      /* @__PURE__ */ jsx6(FieldLabel, { children: "Accessory" }),
+      /* @__PURE__ */ jsx6(
         SegmentToggle,
         {
           options: [{ value: "button", label: "Button" }, { value: "thumbnail", label: "Thumbnail" }],
@@ -999,59 +1316,59 @@ function SectionBody({ node, onChange, variables, onUpload }) {
         }
       )
     ] }),
-    node.accessory.kind === "button" ? /* @__PURE__ */ jsx5(ButtonEditor, { button: node.accessory.button, variables, onChange: (button) => onChange({ ...node, accessory: { kind: "button", button } }) }) : (() => {
+    node.accessory.kind === "button" ? /* @__PURE__ */ jsx6(ButtonEditor, { button: node.accessory.button, variables, onChange: (button) => onChange({ ...node, accessory: { kind: "button", button } }) }) : (() => {
       const thumb = node.accessory;
-      return /* @__PURE__ */ jsxs5("div", { className: "space-y-2", children: [
-        /* @__PURE__ */ jsx5(ImageField, { label: "Thumbnail image", value: thumb.url, onUpload, onChange: (url) => onChange({ ...node, accessory: { ...thumb, url } }) }),
-        /* @__PURE__ */ jsx5(TextField, { label: "Description (alt text)", value: thumb.description ?? "", onChange: (description) => onChange({ ...node, accessory: { ...thumb, description } }) })
+      return /* @__PURE__ */ jsxs6("div", { className: "space-y-2", children: [
+        /* @__PURE__ */ jsx6(ImageField, { label: "Thumbnail image", value: thumb.url, onUpload, onChange: (url) => onChange({ ...node, accessory: { ...thumb, url } }) }),
+        /* @__PURE__ */ jsx6(TextField, { label: "Description (alt text)", value: thumb.description ?? "", onChange: (description) => onChange({ ...node, accessory: { ...thumb, description } }) })
       ] });
     })()
   ] });
 }
 function ActionRowBody({ node, onChange, variables }) {
-  return /* @__PURE__ */ jsxs5("div", { className: "space-y-3", children: [
-    node.buttons.map((b, i) => /* @__PURE__ */ jsxs5("div", { className: "space-y-1", children: [
-      /* @__PURE__ */ jsxs5("div", { className: "flex items-center justify-between", children: [
-        /* @__PURE__ */ jsxs5(FieldLabel, { children: [
+  return /* @__PURE__ */ jsxs6("div", { className: "space-y-3", children: [
+    node.buttons.map((b, i) => /* @__PURE__ */ jsxs6("div", { className: "space-y-1", children: [
+      /* @__PURE__ */ jsxs6("div", { className: "flex items-center justify-between", children: [
+        /* @__PURE__ */ jsxs6(FieldLabel, { children: [
           "Button ",
           i + 1
         ] }),
-        node.buttons.length > 1 && /* @__PURE__ */ jsx5(Button, { variant: "ghost", size: "icon", className: "h-6 w-6", onClick: () => onChange({ ...node, buttons: node.buttons.filter((_, k) => k !== i) }), children: /* @__PURE__ */ jsx5(Trash22, { className: "h-3.5 w-3.5 text-red-400" }) })
+        node.buttons.length > 1 && /* @__PURE__ */ jsx6(Button, { variant: "ghost", size: "icon", className: "h-6 w-6", onClick: () => onChange({ ...node, buttons: node.buttons.filter((_, k) => k !== i) }), children: /* @__PURE__ */ jsx6(Trash22, { className: "h-3.5 w-3.5 text-red-400" }) })
       ] }),
-      /* @__PURE__ */ jsx5(ButtonEditor, { button: b, variables, onChange: (nb) => onChange({ ...node, buttons: node.buttons.map((x, k) => k === i ? nb : x) }) })
+      /* @__PURE__ */ jsx6(ButtonEditor, { button: b, variables, onChange: (nb) => onChange({ ...node, buttons: node.buttons.map((x, k) => k === i ? nb : x) }) })
     ] }, b.id)),
-    node.buttons.length < LIMITS.actionRowButtons && /* @__PURE__ */ jsxs5(Button, { variant: "outline", size: "sm", onClick: () => onChange({ ...node, buttons: [...node.buttons, makeButton("primary")] }), children: [
-      /* @__PURE__ */ jsx5(Plus, { className: "mr-1 h-3 w-3" }),
+    node.buttons.length < LIMITS.actionRowButtons && /* @__PURE__ */ jsxs6(Button, { variant: "outline", size: "sm", onClick: () => onChange({ ...node, buttons: [...node.buttons, makeButton("primary")] }), children: [
+      /* @__PURE__ */ jsx6(Plus, { className: "mr-1 h-3 w-3" }),
       " Add button"
     ] })
   ] });
 }
 function MediaGalleryBody({ node, onChange, onUpload }) {
   const setItem = (i, patch) => onChange({ ...node, items: node.items.map((it, k) => k === i ? { ...it, ...patch } : it) });
-  return /* @__PURE__ */ jsxs5("div", { className: "space-y-3", children: [
-    node.items.map((it, i) => /* @__PURE__ */ jsxs5("div", { className: "space-y-2 rounded-md border border-border/60 bg-muted/20 p-2", children: [
-      /* @__PURE__ */ jsxs5("div", { className: "flex items-center justify-between", children: [
-        /* @__PURE__ */ jsxs5(FieldLabel, { children: [
+  return /* @__PURE__ */ jsxs6("div", { className: "space-y-3", children: [
+    node.items.map((it, i) => /* @__PURE__ */ jsxs6("div", { className: "space-y-2 rounded-md border border-border/60 bg-muted/20 p-2", children: [
+      /* @__PURE__ */ jsxs6("div", { className: "flex items-center justify-between", children: [
+        /* @__PURE__ */ jsxs6(FieldLabel, { children: [
           "Image ",
           i + 1
         ] }),
-        node.items.length > 1 && /* @__PURE__ */ jsx5(Button, { variant: "ghost", size: "icon", className: "h-6 w-6", onClick: () => onChange({ ...node, items: node.items.filter((_, k) => k !== i) }), children: /* @__PURE__ */ jsx5(Trash22, { className: "h-3.5 w-3.5 text-red-400" }) })
+        node.items.length > 1 && /* @__PURE__ */ jsx6(Button, { variant: "ghost", size: "icon", className: "h-6 w-6", onClick: () => onChange({ ...node, items: node.items.filter((_, k) => k !== i) }), children: /* @__PURE__ */ jsx6(Trash22, { className: "h-3.5 w-3.5 text-red-400" }) })
       ] }),
-      /* @__PURE__ */ jsx5(ImageField, { label: "Image", value: it.url, onUpload, onChange: (url) => setItem(i, { url }) }),
-      /* @__PURE__ */ jsx5(TextField, { label: "Description (optional)", value: it.description ?? "", onChange: (description) => setItem(i, { description }), max: 1024 }),
-      /* @__PURE__ */ jsx5(SwitchRow, { label: "Spoiler", checked: !!it.spoiler, onChange: (spoiler) => setItem(i, { spoiler }) })
+      /* @__PURE__ */ jsx6(ImageField, { label: "Image", value: it.url, onUpload, onChange: (url) => setItem(i, { url }) }),
+      /* @__PURE__ */ jsx6(TextField, { label: "Description (optional)", value: it.description ?? "", onChange: (description) => setItem(i, { description }), max: 1024 }),
+      /* @__PURE__ */ jsx6(SwitchRow, { label: "Spoiler", checked: !!it.spoiler, onChange: (spoiler) => setItem(i, { spoiler }) })
     ] }, it.id)),
-    node.items.length < LIMITS.galleryItems && /* @__PURE__ */ jsxs5(Button, { variant: "outline", size: "sm", onClick: () => onChange({ ...node, items: [...node.items, { id: uid("img"), url: "https://" }] }), children: [
-      /* @__PURE__ */ jsx5(Plus, { className: "mr-1 h-3 w-3" }),
+    node.items.length < LIMITS.galleryItems && /* @__PURE__ */ jsxs6(Button, { variant: "outline", size: "sm", onClick: () => onChange({ ...node, items: [...node.items, { id: uid("img"), url: "https://" }] }), children: [
+      /* @__PURE__ */ jsx6(Plus, { className: "mr-1 h-3 w-3" }),
       " Add image"
     ] })
   ] });
 }
 function FileBody({ node, onChange, onUploadFile }) {
-  return /* @__PURE__ */ jsxs5("div", { className: "space-y-2", children: [
-    /* @__PURE__ */ jsx5(FileField, { label: "File", value: node.url, onUpload: onUploadFile, onChange: (url) => onChange({ ...node, url }) }),
-    /* @__PURE__ */ jsx5("p", { className: "text-[11px] text-muted-foreground", children: onUploadFile ? "Upload a file, or paste an attachment:// reference. Uploaded files are attached automatically when sent." : "Use a file attached when sending, for example attachment://image.png" }),
-    /* @__PURE__ */ jsx5(SwitchRow, { label: "Spoiler", checked: !!node.spoiler, onChange: (spoiler) => onChange({ ...node, spoiler }) })
+  return /* @__PURE__ */ jsxs6("div", { className: "space-y-2", children: [
+    /* @__PURE__ */ jsx6(FileField, { label: "File", value: node.url, onUpload: onUploadFile, onChange: (url) => onChange({ ...node, url }) }),
+    /* @__PURE__ */ jsx6("p", { className: "text-[11px] text-muted-foreground", children: onUploadFile ? "Upload a file, or paste an attachment:// reference. Uploaded files are attached automatically when sent." : "Use a file attached when sending, for example attachment://image.png" }),
+    /* @__PURE__ */ jsx6(SwitchRow, { label: "Spoiler", checked: !!node.spoiler, onChange: (spoiler) => onChange({ ...node, spoiler }) })
   ] });
 }
 function BlockBody({
@@ -1063,24 +1380,24 @@ function BlockBody({
 }) {
   switch (node.type) {
     case "text":
-      return /* @__PURE__ */ jsx5(TextBody, { node, onChange, variables });
+      return /* @__PURE__ */ jsx6(TextBody, { node, onChange, variables });
     case "separator":
-      return /* @__PURE__ */ jsx5(SeparatorBody, { node, onChange });
+      return /* @__PURE__ */ jsx6(SeparatorBody, { node, onChange });
     case "section":
-      return /* @__PURE__ */ jsx5(SectionBody, { node, onChange, variables, onUpload });
+      return /* @__PURE__ */ jsx6(SectionBody, { node, onChange, variables, onUpload });
     case "action_row":
-      return /* @__PURE__ */ jsx5(ActionRowBody, { node, onChange, variables });
+      return /* @__PURE__ */ jsx6(ActionRowBody, { node, onChange, variables });
     case "media_gallery":
-      return /* @__PURE__ */ jsx5(MediaGalleryBody, { node, onChange, onUpload });
+      return /* @__PURE__ */ jsx6(MediaGalleryBody, { node, onChange, onUpload });
     case "file":
-      return /* @__PURE__ */ jsx5(FileBody, { node, onChange, onUploadFile });
+      return /* @__PURE__ */ jsx6(FileBody, { node, onChange, onUploadFile });
   }
 }
 
 // src/VariablePalette.tsx
 import { useState as useState3 } from "react";
 import { Check, Image as ImageIcon2, X as X2 } from "lucide-react";
-import { jsx as jsx6, jsxs as jsxs6 } from "react/jsx-runtime";
+import { jsx as jsx7, jsxs as jsxs7 } from "react/jsx-runtime";
 function groupVariables(vars) {
   const order = [];
   const map = /* @__PURE__ */ new Map();
@@ -1107,13 +1424,13 @@ function VariablePalette({ variables, onClose }) {
     setCopied(v.name);
     setTimeout(() => setCopied((c) => c === v.name ? null : c), 1200);
   };
-  return /* @__PURE__ */ jsxs6("div", { className: "overflow-hidden rounded-lg border border-border/60 bg-card", children: [
-    /* @__PURE__ */ jsxs6("div", { className: "flex items-center gap-2 border-b border-border/40 px-3 py-2", children: [
-      /* @__PURE__ */ jsx6("span", { className: "text-xs font-semibold uppercase tracking-wide text-muted-foreground", children: "Variables" }),
-      /* @__PURE__ */ jsx6("span", { className: "text-[11px] text-muted-foreground/70", children: "Click to copy" }),
-      /* @__PURE__ */ jsx6("button", { type: "button", onClick: onClose, "aria-label": "Close", className: "ml-auto rounded p-1 text-muted-foreground hover:bg-muted/50 hover:text-foreground", children: /* @__PURE__ */ jsx6(X2, { className: "h-3.5 w-3.5" }) })
+  return /* @__PURE__ */ jsxs7("div", { className: "overflow-hidden rounded-lg border border-border/60 bg-card", children: [
+    /* @__PURE__ */ jsxs7("div", { className: "flex items-center gap-2 border-b border-border/40 px-3 py-2", children: [
+      /* @__PURE__ */ jsx7("span", { className: "text-xs font-semibold uppercase tracking-wide text-muted-foreground", children: "Variables" }),
+      /* @__PURE__ */ jsx7("span", { className: "text-[11px] text-muted-foreground/70", children: "Click to copy" }),
+      /* @__PURE__ */ jsx7("button", { type: "button", onClick: onClose, "aria-label": "Close", className: "ml-auto rounded p-1 text-muted-foreground hover:bg-muted/50 hover:text-foreground", children: /* @__PURE__ */ jsx7(X2, { className: "h-3.5 w-3.5" }) })
     ] }),
-    /* @__PURE__ */ jsx6("div", { className: "px-3 pt-2", children: /* @__PURE__ */ jsx6(
+    /* @__PURE__ */ jsx7("div", { className: "px-3 pt-2", children: /* @__PURE__ */ jsx7(
       "input",
       {
         value: q,
@@ -1122,12 +1439,12 @@ function VariablePalette({ variables, onClose }) {
         className: "h-7 w-full rounded border border-border/60 bg-background px-2 text-xs outline-none placeholder:text-muted-foreground/60 focus:border-dbx-accent-500"
       }
     ) }),
-    /* @__PURE__ */ jsxs6("div", { className: "max-h-[22rem] overflow-y-auto overscroll-contain px-1 py-2", children: [
-      groupVariables(filtered).map(([group, items]) => /* @__PURE__ */ jsxs6("div", { className: "mb-2 last:mb-0", children: [
-        /* @__PURE__ */ jsx6("div", { className: "px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70", children: group }),
+    /* @__PURE__ */ jsxs7("div", { className: "max-h-[22rem] overflow-y-auto overscroll-contain px-1 py-2", children: [
+      groupVariables(filtered).map(([group, items]) => /* @__PURE__ */ jsxs7("div", { className: "mb-2 last:mb-0", children: [
+        /* @__PURE__ */ jsx7("div", { className: "px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70", children: group }),
         items.map((v) => {
           const sample = String(v.sample ?? "").replace(/\n/g, " ");
-          return /* @__PURE__ */ jsxs6(
+          return /* @__PURE__ */ jsxs7(
             "button",
             {
               type: "button",
@@ -1136,12 +1453,12 @@ function VariablePalette({ variables, onClose }) {
               title: v.description,
               className: "group flex w-full items-baseline gap-3 rounded px-2 py-1.5 text-left transition-colors hover:bg-dbx-accent-500/10",
               children: [
-                /* @__PURE__ */ jsxs6("span", { className: "flex shrink-0 items-center gap-1 font-mono text-[11px] text-dbx-accent-300", children: [
-                  isImage(v.name) && /* @__PURE__ */ jsx6(ImageIcon2, { className: "h-3 w-3 text-muted-foreground" }),
+                /* @__PURE__ */ jsxs7("span", { className: "flex shrink-0 items-center gap-1 font-mono text-[11px] text-dbx-accent-300", children: [
+                  isImage(v.name) && /* @__PURE__ */ jsx7(ImageIcon2, { className: "h-3 w-3 text-muted-foreground" }),
                   wrapVariable(v.name, syntax)
                 ] }),
-                /* @__PURE__ */ jsx6("span", { className: "min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground group-hover:text-foreground", children: copied === v.name ? /* @__PURE__ */ jsxs6("span", { className: "inline-flex items-center gap-1 text-emerald-300", children: [
-                  /* @__PURE__ */ jsx6(Check, { className: "h-3 w-3" }),
+                /* @__PURE__ */ jsx7("span", { className: "min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground group-hover:text-foreground", children: copied === v.name ? /* @__PURE__ */ jsxs7("span", { className: "inline-flex items-center gap-1 text-emerald-300", children: [
+                  /* @__PURE__ */ jsx7(Check, { className: "h-3 w-3" }),
                   " Copied"
                 ] }) : isImage(v.name) ? "image" : sample || "empty" })
               ]
@@ -1150,15 +1467,15 @@ function VariablePalette({ variables, onClose }) {
           );
         })
       ] }, group)),
-      filtered.length === 0 && /* @__PURE__ */ jsx6("p", { className: "px-2 py-3 text-xs text-muted-foreground", children: "No matching variables." })
+      filtered.length === 0 && /* @__PURE__ */ jsx7("p", { className: "px-2 py-3 text-xs text-muted-foreground", children: "No matching variables." })
     ] })
   ] });
 }
 
 // src/BlockCard.tsx
-import { useRef as useRef3 } from "react";
+import { useRef as useRef4 } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Trash2 as Trash23 } from "lucide-react";
-import { Fragment as Fragment4, jsx as jsx7, jsxs as jsxs7 } from "react/jsx-runtime";
+import { Fragment as Fragment4, jsx as jsx8, jsxs as jsxs8 } from "react/jsx-runtime";
 function BlockCard({
   icon: Icon,
   title,
@@ -1174,10 +1491,10 @@ function BlockCard({
   children,
   headerExtra
 }) {
-  const cardRef = useRef3(null);
+  const cardRef = useRef4(null);
   const dragEnabled = !!drag && !compact;
   const iconBtn = compact ? "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded" : "inline-flex shrink-0 items-center justify-center rounded p-1";
-  return /* @__PURE__ */ jsxs7(
+  return /* @__PURE__ */ jsxs8(
     "div",
     {
       ref: cardRef,
@@ -1185,7 +1502,7 @@ function BlockCard({
       onDrop: dragEnabled ? (e) => drag.onDrop(e) : void 0,
       className: `group/row relative transition-opacity ${drag?.dragging ? "opacity-40" : ""} ${collapsed ? "" : "bg-white/[0.02]"}`,
       children: [
-        /* @__PURE__ */ jsx7(
+        /* @__PURE__ */ jsx8(
           "span",
           {
             "aria-hidden": true,
@@ -1193,10 +1510,10 @@ function BlockCard({
             style: accentBorder ? { background: accentBorder } : void 0
           }
         ),
-        drag?.overPos === "before" && /* @__PURE__ */ jsx7("div", { className: "pointer-events-none absolute -top-px left-3 right-3 z-10 h-0.5 rounded bg-dbx-accent-400" }),
-        drag?.overPos === "after" && /* @__PURE__ */ jsx7("div", { className: "pointer-events-none absolute -bottom-px left-3 right-3 z-10 h-0.5 rounded bg-dbx-accent-400" }),
-        /* @__PURE__ */ jsxs7("div", { className: `flex items-center pl-2 pr-1.5 ${compact ? "gap-0.5 py-1" : "gap-1.5 py-1.5"}`, children: [
-          dragEnabled && /* @__PURE__ */ jsx7(
+        drag?.overPos === "before" && /* @__PURE__ */ jsx8("div", { className: "pointer-events-none absolute -top-px left-3 right-3 z-10 h-0.5 rounded bg-dbx-accent-400" }),
+        drag?.overPos === "after" && /* @__PURE__ */ jsx8("div", { className: "pointer-events-none absolute -bottom-px left-3 right-3 z-10 h-0.5 rounded bg-dbx-accent-400" }),
+        /* @__PURE__ */ jsxs8("div", { className: `flex items-center pl-2 pr-1.5 ${compact ? "gap-0.5 py-1" : "gap-1.5 py-1.5"}`, children: [
+          dragEnabled && /* @__PURE__ */ jsx8(
             "button",
             {
               type: "button",
@@ -1205,14 +1522,14 @@ function BlockCard({
               onDragEnd: () => drag.onDragEnd(),
               title: "Drag to reorder",
               className: "cursor-grab text-muted-foreground/40 transition-colors group-hover/row:text-muted-foreground hover:!text-foreground active:cursor-grabbing",
-              children: /* @__PURE__ */ jsx7(GripVertical, { className: "h-4 w-4" })
+              children: /* @__PURE__ */ jsx8(GripVertical, { className: "h-4 w-4" })
             }
           ),
-          compact && move && /* @__PURE__ */ jsxs7(Fragment4, { children: [
-            /* @__PURE__ */ jsx7("button", { type: "button", onClick: move.up, disabled: !move.canUp, title: "Move up", "aria-label": "Move up", className: `${iconBtn} text-muted-foreground hover:text-foreground disabled:opacity-25`, children: /* @__PURE__ */ jsx7(ArrowUp, { className: "h-4 w-4" }) }),
-            /* @__PURE__ */ jsx7("button", { type: "button", onClick: move.down, disabled: !move.canDown, title: "Move down", "aria-label": "Move down", className: `${iconBtn} text-muted-foreground hover:text-foreground disabled:opacity-25`, children: /* @__PURE__ */ jsx7(ArrowDown, { className: "h-4 w-4" }) })
+          compact && move && /* @__PURE__ */ jsxs8(Fragment4, { children: [
+            /* @__PURE__ */ jsx8("button", { type: "button", onClick: move.up, disabled: !move.canUp, title: "Move up", "aria-label": "Move up", className: `${iconBtn} text-muted-foreground hover:text-foreground disabled:opacity-25`, children: /* @__PURE__ */ jsx8(ArrowUp, { className: "h-4 w-4" }) }),
+            /* @__PURE__ */ jsx8("button", { type: "button", onClick: move.down, disabled: !move.canDown, title: "Move down", "aria-label": "Move down", className: `${iconBtn} text-muted-foreground hover:text-foreground disabled:opacity-25`, children: /* @__PURE__ */ jsx8(ArrowDown, { className: "h-4 w-4" }) })
           ] }),
-          /* @__PURE__ */ jsxs7(
+          /* @__PURE__ */ jsxs8(
             "button",
             {
               type: "button",
@@ -1220,17 +1537,17 @@ function BlockCard({
               className: "flex min-w-0 flex-1 items-center gap-2 py-1 text-left",
               "aria-label": collapsed ? "Expand" : "Collapse",
               children: [
-                /* @__PURE__ */ jsx7(ChevronDown, { className: `h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${collapsed ? "-rotate-90" : ""}` }),
-                /* @__PURE__ */ jsx7(Icon, { className: "h-4 w-4 shrink-0 text-dbx-accent-400" }),
-                /* @__PURE__ */ jsx7("span", { className: "truncate text-sm font-medium", children: title }),
-                accentDot && /* @__PURE__ */ jsx7("span", { className: "h-2.5 w-2.5 shrink-0 rounded-full", style: { background: accentDot } }),
-                summary && collapsed && /* @__PURE__ */ jsx7("span", { className: "truncate text-xs text-muted-foreground", children: summary })
+                /* @__PURE__ */ jsx8(ChevronDown, { className: `h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${collapsed ? "-rotate-90" : ""}` }),
+                /* @__PURE__ */ jsx8(Icon, { className: "h-4 w-4 shrink-0 text-dbx-accent-400" }),
+                /* @__PURE__ */ jsx8("span", { className: "truncate text-sm font-medium", children: title }),
+                accentDot && /* @__PURE__ */ jsx8("span", { className: "h-2.5 w-2.5 shrink-0 rounded-full", style: { background: accentDot } }),
+                summary && collapsed && /* @__PURE__ */ jsx8("span", { className: "truncate text-xs text-muted-foreground", children: summary })
               ]
             }
           ),
-          /* @__PURE__ */ jsxs7("span", { className: `flex shrink-0 items-center ${compact ? "gap-0.5" : "gap-1 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100"}`, children: [
+          /* @__PURE__ */ jsxs8("span", { className: `flex shrink-0 items-center ${compact ? "gap-0.5" : "gap-1 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100"}`, children: [
             headerExtra,
-            /* @__PURE__ */ jsx7(
+            /* @__PURE__ */ jsx8(
               "button",
               {
                 type: "button",
@@ -1238,12 +1555,12 @@ function BlockCard({
                 title: "Delete",
                 "aria-label": "Delete",
                 className: `${iconBtn} text-muted-foreground hover:bg-red-500/10 hover:text-red-400`,
-                children: /* @__PURE__ */ jsx7(Trash23, { className: "h-4 w-4" })
+                children: /* @__PURE__ */ jsx8(Trash23, { className: "h-4 w-4" })
               }
             )
           ] })
         ] }),
-        !collapsed && children && /* @__PURE__ */ jsx7("div", { className: `pb-3 ${compact ? "pl-3 pr-2" : "px-3 pl-9"}`, children })
+        !collapsed && children && /* @__PURE__ */ jsx8("div", { className: `pb-3 ${compact ? "pl-3 pr-2" : "px-3 pl-9"}`, children })
       ]
     }
   );
@@ -1251,7 +1568,7 @@ function BlockCard({
 
 // src/AddComponent.tsx
 import { Box, Image as ImageIcon3, LayoutPanelTop, Minus, MousePointerClick, Paperclip as Paperclip2, Plus as Plus2, Type } from "lucide-react";
-import { jsx as jsx8, jsxs as jsxs8 } from "react/jsx-runtime";
+import { jsx as jsx9, jsxs as jsxs9 } from "react/jsx-runtime";
 var BLOCK_ICONS = {
   container: Box,
   text: Type,
@@ -1262,14 +1579,14 @@ var BLOCK_ICONS = {
   action_row: MousePointerClick
 };
 function AddComponentCards({ kinds, onAdd }) {
-  return /* @__PURE__ */ jsxs8("div", { className: "flex flex-wrap items-center gap-1.5", children: [
-    /* @__PURE__ */ jsxs8("span", { className: "mr-1 flex items-center text-xs text-muted-foreground", children: [
-      /* @__PURE__ */ jsx8(Plus2, { className: "mr-1 h-3.5 w-3.5" }),
+  return /* @__PURE__ */ jsxs9("div", { className: "flex flex-wrap items-center gap-1.5", children: [
+    /* @__PURE__ */ jsxs9("span", { className: "mr-1 flex items-center text-xs text-muted-foreground", children: [
+      /* @__PURE__ */ jsx9(Plus2, { className: "mr-1 h-3.5 w-3.5" }),
       " Add"
     ] }),
     kinds.map((k) => {
       const Icon = BLOCK_ICONS[k];
-      return /* @__PURE__ */ jsxs8(
+      return /* @__PURE__ */ jsxs9(
         "button",
         {
           type: "button",
@@ -1277,7 +1594,7 @@ function AddComponentCards({ kinds, onAdd }) {
           title: BLOCK_DESCRIPTIONS[k],
           className: "flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-dbx-accent-500/60 hover:bg-dbx-accent-500/10 hover:text-foreground",
           children: [
-            /* @__PURE__ */ jsx8(Icon, { className: "h-3.5 w-3.5 text-dbx-accent-400" }),
+            /* @__PURE__ */ jsx9(Icon, { className: "h-3.5 w-3.5 text-dbx-accent-400" }),
             BLOCK_LABELS[k]
           ]
         },
@@ -1287,25 +1604,25 @@ function AddComponentCards({ kinds, onAdd }) {
   ] });
 }
 function AddComponentBar({ kinds, onAdd }) {
-  return /* @__PURE__ */ jsxs8("div", { className: "flex flex-wrap gap-1.5", children: [
+  return /* @__PURE__ */ jsxs9("div", { className: "flex flex-wrap gap-1.5", children: [
     kinds.map((k) => {
       const Icon = BLOCK_ICONS[k];
-      return /* @__PURE__ */ jsxs8(
+      return /* @__PURE__ */ jsxs9(
         "button",
         {
           type: "button",
           onClick: () => onAdd(k),
           className: "flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-dbx-accent-500/60 hover:text-foreground",
           children: [
-            /* @__PURE__ */ jsx8(Icon, { className: "h-3.5 w-3.5" }),
+            /* @__PURE__ */ jsx9(Icon, { className: "h-3.5 w-3.5" }),
             BLOCK_LABELS[k]
           ]
         },
         k
       );
     }),
-    /* @__PURE__ */ jsxs8("span", { className: "flex items-center text-[11px] text-muted-foreground/60", children: [
-      /* @__PURE__ */ jsx8(Plus2, { className: "mr-0.5 h-3 w-3" }),
+    /* @__PURE__ */ jsxs9("span", { className: "flex items-center text-[11px] text-muted-foreground/60", children: [
+      /* @__PURE__ */ jsx9(Plus2, { className: "mr-0.5 h-3 w-3" }),
       " Add inside"
     ] })
   ] });
@@ -1317,7 +1634,7 @@ import { ExternalLink } from "lucide-react";
 
 // src/markdown.tsx
 import React from "react";
-import { jsx as jsx9, jsxs as jsxs9 } from "react/jsx-runtime";
+import { jsx as jsx10, jsxs as jsxs10 } from "react/jsx-runtime";
 function variablesToMap(vars, syntax = PERCENT_PLACEHOLDERS) {
   const map = {};
   for (const v of vars ?? []) {
@@ -1333,25 +1650,25 @@ function previewVars(vars, syntax = PERCENT_PLACEHOLDERS) {
 }
 var MENTION_CLS = "bg-[#3e4374] font-medium text-[#dee0fc] hover:bg-[#5865f2]";
 function pill(key, label, cls) {
-  return /* @__PURE__ */ jsx9("span", { className: `rounded px-1 ${cls}`, children: label }, key);
+  return /* @__PURE__ */ jsx10("span", { className: `rounded px-1 ${cls}`, children: label }, key);
 }
 var MATCHERS = [
   // ``…`` before `…`: Discord's double-backtick inline code (may contain single backticks).
-  { re: /``(.+?)``/, build: (m, k) => /* @__PURE__ */ jsx9("code", { className: "rounded bg-black/40 px-1 py-0.5 font-mono text-[0.85em]", children: m[1] }, k) },
-  { re: /`([^`]+)`/, build: (m, k) => /* @__PURE__ */ jsx9("code", { className: "rounded bg-black/40 px-1 py-0.5 font-mono text-[0.85em]", children: m[1] }, k) },
+  { re: /``(.+?)``/, build: (m, k) => /* @__PURE__ */ jsx10("code", { className: "rounded bg-black/40 px-1 py-0.5 font-mono text-[0.85em]", children: m[1] }, k) },
+  { re: /`([^`]+)`/, build: (m, k) => /* @__PURE__ */ jsx10("code", { className: "rounded bg-black/40 px-1 py-0.5 font-mono text-[0.85em]", children: m[1] }, k) },
   // ***…*** before **…**: otherwise the bold matcher eats two of the three
   // stars and the third shows up as a stray character.
-  { re: /\*\*\*([\s\S]+?)\*\*\*/, build: (m, k, v, mn) => /* @__PURE__ */ jsx9("strong", { children: /* @__PURE__ */ jsx9("em", { children: renderInline(m[1], v, k, mn) }) }, k) },
-  { re: /\*\*([\s\S]+?)\*\*/, build: (m, k, v, mn) => /* @__PURE__ */ jsx9("strong", { children: renderInline(m[1], v, k, mn) }, k) },
-  { re: /__([\s\S]+?)__/, build: (m, k, v, mn) => /* @__PURE__ */ jsx9("u", { children: renderInline(m[1], v, k, mn) }, k) },
-  { re: /~~([\s\S]+?)~~/, build: (m, k, v, mn) => /* @__PURE__ */ jsx9("s", { children: renderInline(m[1], v, k, mn) }, k) },
-  { re: /\*([\s\S]+?)\*/, build: (m, k, v, mn) => /* @__PURE__ */ jsx9("em", { children: renderInline(m[1], v, k, mn) }, k) },
-  { re: /_([\s\S]+?)_/, build: (m, k, v, mn) => /* @__PURE__ */ jsx9("em", { children: renderInline(m[1], v, k, mn) }, k) },
+  { re: /\*\*\*([\s\S]+?)\*\*\*/, build: (m, k, v, mn) => /* @__PURE__ */ jsx10("strong", { children: /* @__PURE__ */ jsx10("em", { children: renderInline(m[1], v, k, mn) }) }, k) },
+  { re: /\*\*([\s\S]+?)\*\*/, build: (m, k, v, mn) => /* @__PURE__ */ jsx10("strong", { children: renderInline(m[1], v, k, mn) }, k) },
+  { re: /__([\s\S]+?)__/, build: (m, k, v, mn) => /* @__PURE__ */ jsx10("u", { children: renderInline(m[1], v, k, mn) }, k) },
+  { re: /~~([\s\S]+?)~~/, build: (m, k, v, mn) => /* @__PURE__ */ jsx10("s", { children: renderInline(m[1], v, k, mn) }, k) },
+  { re: /\*([\s\S]+?)\*/, build: (m, k, v, mn) => /* @__PURE__ */ jsx10("em", { children: renderInline(m[1], v, k, mn) }, k) },
+  { re: /_([\s\S]+?)_/, build: (m, k, v, mn) => /* @__PURE__ */ jsx10("em", { children: renderInline(m[1], v, k, mn) }, k) },
   {
     re: /\[([^\]]+)\]\(([^)]+)\)/,
     // Discord links to http(s) only; anything else (javascript:, data:) is
     // shown as the text it is, never handed to the browser as a link
-    build: (m, k, v, mn) => /^https?:\/\//i.test(m[2].trim()) ? /* @__PURE__ */ jsx9("a", { href: m[2].trim(), target: "_blank", rel: "noreferrer", className: "text-[#00a8fc] hover:underline", children: renderInline(m[1], v, k, mn) }, k) : /* @__PURE__ */ jsx9("span", { children: renderInline(m[1], v, k, mn) }, k)
+    build: (m, k, v, mn) => /^https?:\/\//i.test(m[2].trim()) ? /* @__PURE__ */ jsx10("a", { href: m[2].trim(), target: "_blank", rel: "noreferrer", className: "text-[#00a8fc] hover:underline", children: renderInline(m[1], v, k, mn) }, k) : /* @__PURE__ */ jsx10("span", { children: renderInline(m[1], v, k, mn) }, k)
   },
   { re: /<t:(\d+)(?::([tTdDfFR]))?>/, build: (m, k) => pill(k, formatTimestamp(m[1], m[2]), "bg-[#414675] text-[#dee0fc]") },
   { re: /@(everyone|here)/, build: (m, k) => pill(k, `@${m[1]}`, MENTION_CLS) },
@@ -1365,7 +1682,7 @@ var MATCHERS = [
     re: /([\u{1F1E6}-\u{1F1FF}])([\u{1F1E6}-\u{1F1FF}])/u,
     build: (m, k) => {
       const cp = (s) => s.codePointAt(0).toString(16);
-      return /* @__PURE__ */ jsx9(
+      return /* @__PURE__ */ jsx10(
         "img",
         {
           src: `https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/${cp(m[1])}-${cp(m[2])}.svg`,
@@ -1378,7 +1695,7 @@ var MATCHERS = [
   },
   {
     re: /<(a?):(\w+):(\d+)>/,
-    build: (m, k) => /* @__PURE__ */ jsx9(
+    build: (m, k) => /* @__PURE__ */ jsx10(
       "img",
       {
         src: `https://cdn.discordapp.com/emojis/${m[3]}.${m[1] === "a" ? "gif" : "png"}`,
@@ -1394,8 +1711,8 @@ var MATCHERS = [
     build: (m, k, v, mn) => {
       if (!(m[1] in v.values)) return pill(k, wrapVariable(m[1], v.syntax), "bg-amber-500/20 text-amber-300");
       const lines = String(v.values[m[1]]).split("\n");
-      return /* @__PURE__ */ jsx9("span", { title: wrapVariable(m[1], v.syntax), className: "rounded bg-dbx-accent-500/20 px-0.5", children: lines.map((ln, i) => /* @__PURE__ */ jsxs9(React.Fragment, { children: [
-        i > 0 && /* @__PURE__ */ jsx9("br", {}),
+      return /* @__PURE__ */ jsx10("span", { title: wrapVariable(m[1], v.syntax), className: "rounded bg-dbx-accent-500/20 px-0.5", children: lines.map((ln, i) => /* @__PURE__ */ jsxs10(React.Fragment, { children: [
+        i > 0 && /* @__PURE__ */ jsx10("br", {}),
         renderInline(ln, v, `${k}_${i}`, mn)
       ] }, i)) }, k);
     }
@@ -1449,11 +1766,11 @@ function renderInline(text, vars, keyPrefix = "i", mentions) {
       if (m && (best === null || m.index < best.at)) best = { at: m.index, m, matcher };
     }
     if (!best) {
-      out.push(/* @__PURE__ */ jsx9(React.Fragment, { children: rest }, `${keyPrefix}_t${idx}`));
+      out.push(/* @__PURE__ */ jsx10(React.Fragment, { children: rest }, `${keyPrefix}_t${idx}`));
       break;
     }
     if (best.at > 0) {
-      out.push(/* @__PURE__ */ jsx9(React.Fragment, { children: rest.slice(0, best.at) }, `${keyPrefix}_t${idx}`));
+      out.push(/* @__PURE__ */ jsx10(React.Fragment, { children: rest.slice(0, best.at) }, `${keyPrefix}_t${idx}`));
       idx += 1;
     }
     out.push(best.matcher.build(best.m, `${keyPrefix}_m${idx}`, vars, mentions));
@@ -1474,11 +1791,11 @@ function renderTextSegment(seg, keyPrefix, vars, mentions, blocks) {
         i += 1;
       }
       blocks.push(
-        /* @__PURE__ */ jsx9("ul", { className: "my-0.5 list-disc pl-5", children: items.map((it, k) => /* @__PURE__ */ jsx9("li", { children: renderInline(it, vars, `${keyPrefix}li${i}_${k}`, mentions) }, k)) }, `${keyPrefix}b${i}`)
+        /* @__PURE__ */ jsx10("ul", { className: "my-0.5 list-disc pl-5", children: items.map((it, k) => /* @__PURE__ */ jsx10("li", { children: renderInline(it, vars, `${keyPrefix}li${i}_${k}`, mentions) }, k)) }, `${keyPrefix}b${i}`)
       );
       continue;
     }
-    blocks.push(/* @__PURE__ */ jsx9(LineBlock, { line, vars, mentions }, `${keyPrefix}b${i}`));
+    blocks.push(/* @__PURE__ */ jsx10(LineBlock, { line, vars, mentions }, `${keyPrefix}b${i}`));
     i += 1;
   }
 }
@@ -1492,7 +1809,7 @@ function Markdown({ text, vars, mentions }) {
       if (nl !== -1 && /^[a-zA-Z0-9+_.#-]*$/.test(body.slice(0, nl))) body = body.slice(nl + 1);
       body = body.replace(/\n$/, "");
       blocks.push(
-        /* @__PURE__ */ jsx9("pre", { className: "my-1 overflow-x-auto rounded bg-black/40 p-2 font-mono text-[0.8em]", children: body }, `s${si}`)
+        /* @__PURE__ */ jsx10("pre", { className: "my-1 overflow-x-auto rounded bg-black/40 p-2 font-mono text-[0.8em]", children: body }, `s${si}`)
       );
       return;
     }
@@ -1502,25 +1819,25 @@ function Markdown({ text, vars, mentions }) {
     if (textSeg === "") return;
     renderTextSegment(textSeg, `s${si}`, vars, mentions, blocks);
   });
-  return /* @__PURE__ */ jsx9("div", { className: "leading-[1.375]", children: blocks });
+  return /* @__PURE__ */ jsx10("div", { className: "leading-[1.375]", children: blocks });
 }
 function LineBlock({ line, vars, mentions }) {
-  if (line.trim() === "") return /* @__PURE__ */ jsx9("div", { className: "h-2" });
+  if (line.trim() === "") return /* @__PURE__ */ jsx10("div", { className: "h-2" });
   if (line.startsWith("-# "))
-    return /* @__PURE__ */ jsx9("div", { className: "text-[0.8em] text-[#949ba4]", children: renderInline(line.slice(3), vars, "i", mentions) });
+    return /* @__PURE__ */ jsx10("div", { className: "text-[0.8em] text-[#949ba4]", children: renderInline(line.slice(3), vars, "i", mentions) });
   if (line.startsWith("### "))
-    return /* @__PURE__ */ jsx9("div", { className: "mt-1 text-[1em] font-bold", children: renderInline(line.slice(4), vars, "i", mentions) });
+    return /* @__PURE__ */ jsx10("div", { className: "mt-1 text-[1em] font-bold", children: renderInline(line.slice(4), vars, "i", mentions) });
   if (line.startsWith("## "))
-    return /* @__PURE__ */ jsx9("div", { className: "mt-1 text-[1.15em] font-bold", children: renderInline(line.slice(3), vars, "i", mentions) });
+    return /* @__PURE__ */ jsx10("div", { className: "mt-1 text-[1.15em] font-bold", children: renderInline(line.slice(3), vars, "i", mentions) });
   if (line.startsWith("# "))
-    return /* @__PURE__ */ jsx9("div", { className: "mt-1 text-[1.35em] font-bold", children: renderInline(line.slice(2), vars, "i", mentions) });
+    return /* @__PURE__ */ jsx10("div", { className: "mt-1 text-[1.35em] font-bold", children: renderInline(line.slice(2), vars, "i", mentions) });
   if (line.startsWith("> "))
-    return /* @__PURE__ */ jsx9("div", { className: "border-l-2 border-[#4e5058] pl-2 text-[#dbdee1]", children: renderInline(line.slice(2), vars, "i", mentions) });
-  return /* @__PURE__ */ jsx9("div", { children: renderInline(line, vars, "i", mentions) });
+    return /* @__PURE__ */ jsx10("div", { className: "border-l-2 border-[#4e5058] pl-2 text-[#dbdee1]", children: renderInline(line.slice(2), vars, "i", mentions) });
+  return /* @__PURE__ */ jsx10("div", { children: renderInline(line, vars, "i", mentions) });
 }
 
 // src/DiscordPreview.tsx
-import { Fragment as Fragment5, jsx as jsx10, jsxs as jsxs10 } from "react/jsx-runtime";
+import { Fragment as Fragment5, jsx as jsx11, jsxs as jsxs11 } from "react/jsx-runtime";
 var MentionsCtx = createContext2(void 0);
 var BTN_CLASS = {
   primary: "bg-[#5865f2] text-white",
@@ -1535,83 +1852,83 @@ function hex(color) {
 }
 function ButtonEmoji({ emoji }) {
   const m = emoji.match(/^<(a?):(\w+):(\d+)>$/);
-  if (m) return /* @__PURE__ */ jsx10("img", { src: `https://cdn.discordapp.com/emojis/${m[3]}.${m[1] === "a" ? "gif" : "png"}`, alt: "", className: "h-4 w-4" });
-  return /* @__PURE__ */ jsx10("span", { children: emoji });
+  if (m) return /* @__PURE__ */ jsx11("img", { src: `https://cdn.discordapp.com/emojis/${m[3]}.${m[1] === "a" ? "gif" : "png"}`, alt: "", className: "h-4 w-4" });
+  return /* @__PURE__ */ jsx11("span", { children: emoji });
 }
 function PreviewButton({ b }) {
   const cls = `inline-flex items-center gap-1 rounded-[3px] px-3 py-1.5 text-sm font-medium ${BTN_CLASS[b.style]} ${b.disabled ? "opacity-50" : ""}`;
-  const inner = /* @__PURE__ */ jsxs10(Fragment5, { children: [
-    b.emoji && /* @__PURE__ */ jsx10(ButtonEmoji, { emoji: b.emoji }),
+  const inner = /* @__PURE__ */ jsxs11(Fragment5, { children: [
+    b.emoji && /* @__PURE__ */ jsx11(ButtonEmoji, { emoji: b.emoji }),
     b.label,
-    b.style === "link" && /* @__PURE__ */ jsx10(ExternalLink, { className: "h-3 w-3 opacity-70" })
+    b.style === "link" && /* @__PURE__ */ jsx11(ExternalLink, { className: "h-3 w-3 opacity-70" })
   ] });
   if (b.style === "link" && b.url && /^https?:\/\//.test(b.url) && !b.disabled) {
-    return /* @__PURE__ */ jsx10("a", { href: b.url, target: "_blank", rel: "noreferrer", className: cls, children: inner });
+    return /* @__PURE__ */ jsx11("a", { href: b.url, target: "_blank", rel: "noreferrer", className: cls, children: inner });
   }
-  return /* @__PURE__ */ jsx10("span", { className: cls, children: inner });
+  return /* @__PURE__ */ jsx11("span", { className: cls, children: inner });
 }
 function resolveUrl(url, vars) {
   return (url ?? "").replace(variablePattern(vars.syntax, "g"), (m, name) => vars.values[name] != null ? String(vars.values[name]) : m);
 }
 function Accessory({ a, vars }) {
-  if (a.kind === "button") return /* @__PURE__ */ jsx10(PreviewButton, { b: a.button });
+  if (a.kind === "button") return /* @__PURE__ */ jsx11(PreviewButton, { b: a.button });
   const url = resolveUrl(a.url, vars);
-  return url && /^https?:\/\//.test(url) ? /* @__PURE__ */ jsx10("img", { src: url, alt: a.description ?? "", className: "h-16 w-16 rounded object-cover" }) : /* @__PURE__ */ jsx10("div", { className: "flex h-16 w-16 items-center justify-center rounded bg-black/30 text-[10px] text-muted-foreground", children: "thumb" });
+  return url && /^https?:\/\//.test(url) ? /* @__PURE__ */ jsx11("img", { src: url, alt: a.description ?? "", className: "h-16 w-16 rounded object-cover" }) : /* @__PURE__ */ jsx11("div", { className: "flex h-16 w-16 items-center justify-center rounded bg-black/30 text-[10px] text-muted-foreground", children: "thumb" });
 }
 function ImageTile({ url: raw, label, vars }) {
   const url = resolveUrl(raw, vars);
-  return url && /^https?:\/\//.test(url) ? /* @__PURE__ */ jsx10("img", { src: url, alt: label ?? "", className: "max-h-48 rounded object-cover" }) : /* @__PURE__ */ jsx10("div", { className: "flex h-24 items-center justify-center rounded bg-black/30 text-xs text-muted-foreground", children: label || "image" });
+  return url && /^https?:\/\//.test(url) ? /* @__PURE__ */ jsx11("img", { src: url, alt: label ?? "", className: "max-h-48 rounded object-cover" }) : /* @__PURE__ */ jsx11("div", { className: "flex h-24 items-center justify-center rounded bg-black/30 text-xs text-muted-foreground", children: label || "image" });
 }
 function Child({ node, vars }) {
   const mentions = useContext2(MentionsCtx);
   switch (node.type) {
     case "text":
-      return /* @__PURE__ */ jsx10("div", { className: "text-sm text-[#dbdee1]", children: /* @__PURE__ */ jsx10(Markdown, { text: node.content, vars, mentions }) });
+      return /* @__PURE__ */ jsx11("div", { className: "text-sm text-[#dbdee1]", children: /* @__PURE__ */ jsx11(Markdown, { text: node.content, vars, mentions }) });
     case "separator":
-      return node.divider ? /* @__PURE__ */ jsx10("hr", { className: `border-white/10 ${node.spacing === "large" ? "my-3" : "my-1.5"}` }) : /* @__PURE__ */ jsx10("div", { className: node.spacing === "large" ? "h-3" : "h-1.5" });
+      return node.divider ? /* @__PURE__ */ jsx11("hr", { className: `border-white/10 ${node.spacing === "large" ? "my-3" : "my-1.5"}` }) : /* @__PURE__ */ jsx11("div", { className: node.spacing === "large" ? "h-3" : "h-1.5" });
     case "section":
-      return /* @__PURE__ */ jsxs10("div", { className: "flex items-start justify-between gap-3", children: [
-        /* @__PURE__ */ jsx10("div", { className: "min-w-0 flex-1 break-words text-sm text-[#dbdee1]", children: node.texts.map((t, i) => /* @__PURE__ */ jsx10(Markdown, { text: t, vars, mentions }, i)) }),
-        /* @__PURE__ */ jsx10("div", { className: "shrink-0", children: /* @__PURE__ */ jsx10(Accessory, { a: node.accessory, vars }) })
+      return /* @__PURE__ */ jsxs11("div", { className: "flex items-start justify-between gap-3", children: [
+        /* @__PURE__ */ jsx11("div", { className: "min-w-0 flex-1 break-words text-sm text-[#dbdee1]", children: node.texts.map((t, i) => /* @__PURE__ */ jsx11(Markdown, { text: t, vars, mentions }, i)) }),
+        /* @__PURE__ */ jsx11("div", { className: "shrink-0", children: /* @__PURE__ */ jsx11(Accessory, { a: node.accessory, vars }) })
       ] });
     case "media_gallery":
-      return /* @__PURE__ */ jsx10("div", { className: "flex flex-wrap gap-1.5", children: node.items.map((it) => /* @__PURE__ */ jsx10(ImageTile, { url: it.url, label: it.description, vars }, it.id)) });
+      return /* @__PURE__ */ jsx11("div", { className: "flex flex-wrap gap-1.5", children: node.items.map((it) => /* @__PURE__ */ jsx11(ImageTile, { url: it.url, label: it.description, vars }, it.id)) });
     case "file":
-      return /* @__PURE__ */ jsxs10("div", { className: "rounded border border-white/10 bg-black/20 px-3 py-2 text-xs text-[#dbdee1]", children: [
+      return /* @__PURE__ */ jsxs11("div", { className: "rounded border border-white/10 bg-black/20 px-3 py-2 text-xs text-[#dbdee1]", children: [
         "\u{1F4CE} ",
         node.url.replace(/^attachment:\/\//, ""),
-        node.spoiler && /* @__PURE__ */ jsx10("span", { className: "ml-1 text-muted-foreground", children: "(spoiler)" })
+        node.spoiler && /* @__PURE__ */ jsx11("span", { className: "ml-1 text-muted-foreground", children: "(spoiler)" })
       ] });
     case "action_row":
-      return /* @__PURE__ */ jsx10("div", { className: "flex flex-wrap gap-2", children: node.buttons.map((b) => /* @__PURE__ */ jsx10(PreviewButton, { b }, b.id)) });
+      return /* @__PURE__ */ jsx11("div", { className: "flex flex-wrap gap-2", children: node.buttons.map((b) => /* @__PURE__ */ jsx11(PreviewButton, { b }, b.id)) });
   }
 }
 function Root({ node, vars, footnote }) {
   if (node.type === "container") {
     const color = hex(node.accentColor);
-    return /* @__PURE__ */ jsxs10(
+    return /* @__PURE__ */ jsxs11(
       "div",
       {
         className: "space-y-2 rounded-[4px] bg-[#2b2d31] p-3",
         style: color ? { borderLeft: `4px solid ${color}` } : void 0,
         children: [
-          node.children.map((c) => /* @__PURE__ */ jsx10(Child, { node: c, vars }, c.id)),
-          footnote && /* @__PURE__ */ jsxs10(Fragment5, { children: [
-            /* @__PURE__ */ jsx10("div", { className: "h-px bg-[#3f4147]" }),
-            /* @__PURE__ */ jsx10("div", { className: "text-xs text-[#949ba4]", children: renderInline(footnote.replace(/^-# /, ""), vars, "fn") })
+          node.children.map((c) => /* @__PURE__ */ jsx11(Child, { node: c, vars }, c.id)),
+          footnote && /* @__PURE__ */ jsxs11(Fragment5, { children: [
+            /* @__PURE__ */ jsx11("div", { className: "h-px bg-[#3f4147]" }),
+            /* @__PURE__ */ jsx11("div", { className: "text-xs text-[#949ba4]", children: renderInline(footnote.replace(/^-# /, ""), vars, "fn") })
           ] })
         ]
       }
     );
   }
-  return /* @__PURE__ */ jsxs10(Fragment5, { children: [
-    /* @__PURE__ */ jsx10(Child, { node, vars }),
-    footnote && /* @__PURE__ */ jsx10("div", { className: "text-xs text-[#949ba4]", children: renderInline(footnote.replace(/^-# /, ""), vars, "fn") })
+  return /* @__PURE__ */ jsxs11(Fragment5, { children: [
+    /* @__PURE__ */ jsx11(Child, { node, vars }),
+    footnote && /* @__PURE__ */ jsx11("div", { className: "text-xs text-[#949ba4]", children: renderInline(footnote.replace(/^-# /, ""), vars, "fn") })
   ] });
 }
 function MessageComponents({ model, variables, mentions, syntax = PERCENT_PLACEHOLDERS }) {
   const vars = previewVars(variables, syntax);
-  return /* @__PURE__ */ jsx10(MentionsCtx.Provider, { value: mentions, children: /* @__PURE__ */ jsx10("div", { className: "space-y-2", children: model.components.map((node) => /* @__PURE__ */ jsx10(Root, { node, vars }, node.id)) }) });
+  return /* @__PURE__ */ jsx11(MentionsCtx.Provider, { value: mentions, children: /* @__PURE__ */ jsx11("div", { className: "space-y-2", children: model.components.map((node) => /* @__PURE__ */ jsx11(Root, { node, vars }, node.id)) }) });
 }
 function DiscordPreview({
   model,
@@ -1624,16 +1941,16 @@ function DiscordPreview({
   className = ""
 }) {
   const vars = previewVars(variables, syntax);
-  return /* @__PURE__ */ jsx10(MentionsCtx.Provider, { value: mentions, children: /* @__PURE__ */ jsx10("div", { className: `rounded-lg bg-[#313338] p-4 ${className}`, children: /* @__PURE__ */ jsxs10("div", { className: "flex gap-3", children: [
-    botAvatar ? /* @__PURE__ */ jsx10("img", { src: botAvatar, alt: "", className: "h-10 w-10 shrink-0 rounded-full object-cover" }) : /* @__PURE__ */ jsx10("div", { className: "h-10 w-10 shrink-0 rounded-full bg-[#5865f2]" }),
-    /* @__PURE__ */ jsxs10("div", { className: "min-w-0 flex-1", children: [
-      /* @__PURE__ */ jsxs10("div", { className: "mb-1 flex items-center gap-2", children: [
-        /* @__PURE__ */ jsx10("span", { className: "text-sm font-medium text-white", children: botName ?? "\u2026" }),
-        /* @__PURE__ */ jsx10("span", { className: "rounded bg-[#5865f2] px-1 text-[10px] font-semibold text-white", children: "APP" }),
-        /* @__PURE__ */ jsx10("span", { className: "text-xs text-muted-foreground", children: "Today" })
+  return /* @__PURE__ */ jsx11(MentionsCtx.Provider, { value: mentions, children: /* @__PURE__ */ jsx11("div", { className: `rounded-lg bg-[#313338] p-4 ${className}`, children: /* @__PURE__ */ jsxs11("div", { className: "flex gap-3", children: [
+    botAvatar ? /* @__PURE__ */ jsx11("img", { src: botAvatar, alt: "", className: "h-10 w-10 shrink-0 rounded-full object-cover" }) : /* @__PURE__ */ jsx11("div", { className: "h-10 w-10 shrink-0 rounded-full bg-[#5865f2]" }),
+    /* @__PURE__ */ jsxs11("div", { className: "min-w-0 flex-1", children: [
+      /* @__PURE__ */ jsxs11("div", { className: "mb-1 flex items-center gap-2", children: [
+        /* @__PURE__ */ jsx11("span", { className: "text-sm font-medium text-white", children: botName ?? "\u2026" }),
+        /* @__PURE__ */ jsx11("span", { className: "rounded bg-[#5865f2] px-1 text-[10px] font-semibold text-white", children: "APP" }),
+        /* @__PURE__ */ jsx11("span", { className: "text-xs text-muted-foreground", children: "Today" })
       ] }),
-      /* @__PURE__ */ jsxs10("div", { className: "space-y-2", children: [
-        model.components.length === 0 ? /* @__PURE__ */ jsx10("div", { className: "text-sm text-muted-foreground", children: "Empty message" }) : model.components.map((node, i) => /* @__PURE__ */ jsx10(
+      /* @__PURE__ */ jsxs11("div", { className: "space-y-2", children: [
+        model.components.length === 0 ? /* @__PURE__ */ jsx11("div", { className: "text-sm text-muted-foreground", children: "Empty message" }) : model.components.map((node, i) => /* @__PURE__ */ jsx11(
           Root,
           {
             node,
@@ -1642,19 +1959,19 @@ function DiscordPreview({
           },
           node.id
         )),
-        watermark && model.components.length === 0 && /* @__PURE__ */ jsx10("div", { className: "text-xs text-[#949ba4]", children: watermark })
+        watermark && model.components.length === 0 && /* @__PURE__ */ jsx11("div", { className: "text-xs text-[#949ba4]", children: watermark })
       ] })
     ] })
   ] }) }) });
 }
 
 // src/useCompact.ts
-import { useEffect as useEffect4, useState as useState4 } from "react";
+import { useEffect as useEffect5, useState as useState4 } from "react";
 function useMediaQuery(query) {
   const [matches, setMatches] = useState4(
     () => typeof window === "undefined" ? false : window.matchMedia(query).matches
   );
-  useEffect4(() => {
+  useEffect5(() => {
     const mql = window.matchMedia(query);
     const onChange = () => setMatches(mql.matches);
     onChange();
@@ -1675,7 +1992,7 @@ function scrollParent(el) {
 }
 function useVisibleHeight(ref, enabled, inset = 32) {
   const [height, setHeight] = useState4(null);
-  useEffect4(() => {
+  useEffect5(() => {
     const el = ref.current;
     if (!enabled || !el) {
       setHeight(null);
@@ -1696,7 +2013,7 @@ function useVisibleHeight(ref, enabled, inset = 32) {
 }
 
 // src/DiscordMessageBuilder.tsx
-import { jsx as jsx11, jsxs as jsxs11 } from "react/jsx-runtime";
+import { jsx as jsx12, jsxs as jsxs12 } from "react/jsx-runtime";
 var ROOT_ZONE = "root";
 function summarize(node) {
   switch (node.type) {
@@ -1735,7 +2052,7 @@ function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PL
   const [pane, setPane] = useState5("editor");
   const [paletteOpen, setPaletteOpen] = useState5(false);
   const paletteApi = useMemo(() => ({ open: () => setPaletteOpen(true) }), []);
-  const previewRef = useRef4(null);
+  const previewRef = useRef5(null);
   const previewMax = useVisibleHeight(previewRef, !compact);
   const allVariables = useMemo(
     () => applyVariableSamples(
@@ -1846,7 +2163,7 @@ function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PL
     if (node.type === "container") {
       const container = node;
       const accent = hexOf(container.accentColor);
-      return /* @__PURE__ */ jsx11(
+      return /* @__PURE__ */ jsx12(
         BlockCard,
         {
           icon: Icon,
@@ -1860,18 +2177,18 @@ function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PL
           drag: dragPropsFor(zone, node.id),
           move: movePropsFor(zone, node.id),
           compact,
-          children: /* @__PURE__ */ jsxs11("div", { className: "space-y-3", children: [
-            /* @__PURE__ */ jsx11(ContainerProps, { node: container, onChange: (n) => updateNode(node.id, n) }),
-            /* @__PURE__ */ jsxs11("div", { className: "divide-y divide-border/40 rounded-md border border-border/50", children: [
-              container.children.length === 0 ? /* @__PURE__ */ jsx11("p", { className: "px-3 py-2 text-xs text-muted-foreground", children: "Empty container. Add a block below." }) : container.children.map((child) => renderBlock(child, container.id)),
-              /* @__PURE__ */ jsx11("div", { className: "px-3 py-2", children: /* @__PURE__ */ jsx11(AddComponentBar, { kinds: CHILD_BLOCK_KINDS, onAdd: (k) => addChild(container.id, k) }) })
+          children: /* @__PURE__ */ jsxs12("div", { className: "space-y-3", children: [
+            /* @__PURE__ */ jsx12(ContainerProps, { node: container, onChange: (n) => updateNode(node.id, n) }),
+            /* @__PURE__ */ jsxs12("div", { className: "divide-y divide-border/40 rounded-md border border-border/50", children: [
+              container.children.length === 0 ? /* @__PURE__ */ jsx12("p", { className: "px-3 py-2 text-xs text-muted-foreground", children: "Empty container. Add a block below." }) : container.children.map((child) => renderBlock(child, container.id)),
+              /* @__PURE__ */ jsx12("div", { className: "px-3 py-2", children: /* @__PURE__ */ jsx12(AddComponentBar, { kinds: CHILD_BLOCK_KINDS, onAdd: (k) => addChild(container.id, k) }) })
             ] })
           ] })
         },
         node.id
       );
     }
-    return /* @__PURE__ */ jsx11(
+    return /* @__PURE__ */ jsx12(
       BlockCard,
       {
         icon: Icon,
@@ -1883,7 +2200,7 @@ function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PL
         drag: dragPropsFor(zone, node.id),
         move: movePropsFor(zone, node.id),
         compact,
-        children: /* @__PURE__ */ jsx11(BlockBody, { node, onChange: (n) => updateNode(node.id, n), variables: allVariables, onUpload: onUploadImage, onUploadFile })
+        children: /* @__PURE__ */ jsx12(BlockBody, { node, onChange: (n) => updateNode(node.id, n), variables: allVariables, onUpload: onUploadImage, onUploadFile })
       },
       node.id
     );
@@ -1894,8 +2211,8 @@ function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PL
   const total = countComponents(value.components);
   const showEditor = !compact || pane === "editor";
   const showPreview = !compact || pane === "preview";
-  return /* @__PURE__ */ jsx11(BuilderContext.Provider, { value: integrations ?? {}, children: /* @__PURE__ */ jsx11(SyntaxContext.Provider, { value: syntax, children: /* @__PURE__ */ jsx11(PaletteContext.Provider, { value: paletteApi, children: /* @__PURE__ */ jsxs11("div", { className, children: [
-    compact && /* @__PURE__ */ jsx11("div", { className: "mb-3 flex rounded-lg border border-border/60 bg-card p-1 text-sm", children: ["editor", "preview"].map((id) => /* @__PURE__ */ jsxs11(
+  return /* @__PURE__ */ jsx12(BuilderContext.Provider, { value: integrations ?? {}, children: /* @__PURE__ */ jsx12(SyntaxContext.Provider, { value: syntax, children: /* @__PURE__ */ jsx12(PaletteContext.Provider, { value: paletteApi, children: /* @__PURE__ */ jsxs12("div", { className, children: [
+    compact && /* @__PURE__ */ jsx12("div", { className: "mb-3 flex rounded-lg border border-border/60 bg-card p-1 text-sm", children: ["editor", "preview"].map((id) => /* @__PURE__ */ jsxs12(
       "button",
       {
         type: "button",
@@ -1904,36 +2221,36 @@ function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PL
         className: `flex-1 rounded-md py-2 font-medium capitalize transition-colors ${pane === id ? "bg-dbx-accent-600 text-white" : "text-muted-foreground hover:text-foreground"}`,
         children: [
           id,
-          id === "preview" && errors.length > 0 && /* @__PURE__ */ jsx11("span", { className: `ml-1.5 rounded px-1.5 py-0.5 text-[11px] ${pane === id ? "bg-white/20" : "bg-red-500/15 text-red-400"}`, children: errors.length })
+          id === "preview" && errors.length > 0 && /* @__PURE__ */ jsx12("span", { className: `ml-1.5 rounded px-1.5 py-0.5 text-[11px] ${pane === id ? "bg-white/20" : "bg-red-500/15 text-red-400"}`, children: errors.length })
         ]
       },
       id
     )) }),
-    /* @__PURE__ */ jsxs11("div", { className: "grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]", children: [
-      /* @__PURE__ */ jsxs11("div", { className: showEditor ? "space-y-3" : "hidden", children: [
-        compact && paletteOpen && /* @__PURE__ */ jsx11(VariablePalette, { variables: allVariables, onClose: () => setPaletteOpen(false) }),
-        /* @__PURE__ */ jsxs11("div", { className: "divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60 bg-card", children: [
+    /* @__PURE__ */ jsxs12("div", { className: "grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]", children: [
+      /* @__PURE__ */ jsxs12("div", { className: showEditor ? "space-y-3" : "hidden", children: [
+        compact && paletteOpen && /* @__PURE__ */ jsx12(VariablePalette, { variables: allVariables, onClose: () => setPaletteOpen(false) }),
+        /* @__PURE__ */ jsxs12("div", { className: "divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60 bg-card", children: [
           value.components.map((node) => renderBlock(node, ROOT_ZONE)),
-          value.components.length === 0 && /* @__PURE__ */ jsx11("p", { className: "px-4 py-6 text-center text-sm text-muted-foreground", children: "No blocks yet. Add one below." })
+          value.components.length === 0 && /* @__PURE__ */ jsx12("p", { className: "px-4 py-6 text-center text-sm text-muted-foreground", children: "No blocks yet. Add one below." })
         ] }),
-        /* @__PURE__ */ jsx11(AddComponentCards, { kinds: ROOT_BLOCK_KINDS, onAdd: addRoot })
+        /* @__PURE__ */ jsx12(AddComponentCards, { kinds: ROOT_BLOCK_KINDS, onAdd: addRoot })
       ] }),
-      /* @__PURE__ */ jsxs11(
+      /* @__PURE__ */ jsxs12(
         "div",
         {
           ref: previewRef,
           style: previewMax ? { maxHeight: previewMax } : void 0,
           className: `space-y-2 lg:sticky lg:top-4 lg:self-start lg:overflow-y-auto lg:overscroll-contain ${showPreview ? "" : "hidden"}`,
           children: [
-            !compact && paletteOpen && /* @__PURE__ */ jsx11(VariablePalette, { variables: allVariables, onClose: () => setPaletteOpen(false) }),
-            /* @__PURE__ */ jsxs11("div", { className: "flex items-center justify-between", children: [
-              /* @__PURE__ */ jsx11("span", { className: "text-xs font-semibold uppercase tracking-wide text-muted-foreground", children: "Preview" }),
-              /* @__PURE__ */ jsxs11("span", { className: "flex items-center gap-3 text-xs text-muted-foreground", children: [
-                !paletteOpen && allVariables.length > 0 && /* @__PURE__ */ jsxs11("button", { type: "button", onClick: () => setPaletteOpen(true), className: "flex items-center gap-1 text-dbx-accent-300 hover:text-dbx-accent-200", children: [
-                  /* @__PURE__ */ jsx11(Percent2, { className: "h-3 w-3" }),
+            !compact && paletteOpen && /* @__PURE__ */ jsx12(VariablePalette, { variables: allVariables, onClose: () => setPaletteOpen(false) }),
+            /* @__PURE__ */ jsxs12("div", { className: "flex items-center justify-between", children: [
+              /* @__PURE__ */ jsx12("span", { className: "text-xs font-semibold uppercase tracking-wide text-muted-foreground", children: "Preview" }),
+              /* @__PURE__ */ jsxs12("span", { className: "flex items-center gap-3 text-xs text-muted-foreground", children: [
+                !paletteOpen && allVariables.length > 0 && /* @__PURE__ */ jsxs12("button", { type: "button", onClick: () => setPaletteOpen(true), className: "flex items-center gap-1 text-dbx-accent-300 hover:text-dbx-accent-200", children: [
+                  /* @__PURE__ */ jsx12(Percent2, { className: "h-3 w-3" }),
                   " Variables"
                 ] }),
-                /* @__PURE__ */ jsxs11("span", { className: total > LIMITS.totalComponents ? "text-red-400" : "", children: [
+                /* @__PURE__ */ jsxs12("span", { className: total > LIMITS.totalComponents ? "text-red-400" : "", children: [
                   total,
                   " / ",
                   LIMITS.totalComponents,
@@ -1941,16 +2258,16 @@ function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PL
                 ] })
               ] })
             ] }),
-            /* @__PURE__ */ jsx11(DiscordPreview, { model: value, variables: allVariables, syntax, mentions: previewMentions, botName, botAvatar, watermark }),
-            /* @__PURE__ */ jsx11("p", { className: "text-[11px] leading-snug text-muted-foreground/70", children: "Discord may show the message slightly differently on some devices." }),
-            (errors.length > 0 || warnings.length > 0) && /* @__PURE__ */ jsxs11("div", { className: "space-y-1 rounded-lg border border-border/50 bg-card p-2 text-xs", children: [
-              errors.map((e, i) => /* @__PURE__ */ jsxs11("div", { className: "text-red-400", children: [
+            /* @__PURE__ */ jsx12(DiscordPreview, { model: value, variables: allVariables, syntax, mentions: previewMentions, botName, botAvatar, watermark }),
+            /* @__PURE__ */ jsx12("p", { className: "text-[11px] leading-snug text-muted-foreground/70", children: "Discord may show the message slightly differently on some devices." }),
+            (errors.length > 0 || warnings.length > 0) && /* @__PURE__ */ jsxs12("div", { className: "space-y-1 rounded-lg border border-border/50 bg-card p-2 text-xs", children: [
+              errors.map((e, i) => /* @__PURE__ */ jsxs12("div", { className: "text-red-400", children: [
                 "\u25CF ",
                 e.path,
                 ": ",
                 e.message
               ] }, `e${i}`)),
-              warnings.map((w, i) => /* @__PURE__ */ jsxs11("div", { className: "text-amber-400", children: [
+              warnings.map((w, i) => /* @__PURE__ */ jsxs12("div", { className: "text-amber-400", children: [
                 "\u25CF ",
                 w.path,
                 ": ",
