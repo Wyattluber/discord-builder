@@ -50,9 +50,10 @@ jobs:
             branch: staging
             dirs: ". dashboard"
             check: ""
-          # Cloudflare Pages builds main on push; the typecheck has old errors, the build is the gate
+          # A push to staging deploys staging; production follows by its Release
+          # workflow (staging -> main). The typecheck has old errors, the build is the gate
           - repo: Wyattluber/sorinscriptsdash-jun_2026
-            branch: main
+            branch: staging
             dirs: "."
             check: "npm run build"
           - repo: Wyattluber/botvault

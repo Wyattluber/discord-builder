@@ -119,7 +119,8 @@ export function EmojiGrid({ onPick }: { onPick: (e: string) => void }) {
   const [tab, setTab] = useState<"standard" | "server">("standard");
   const [q, setQ] = useState("");
   const query = q.trim().toLowerCase();
-  const [search, setSearch] = useState<EmojiSearch | null>(emojiSearch);
+  // A function as initial state would be called by React, so wrap it
+  const [search, setSearch] = useState<EmojiSearch | null>(() => emojiSearch);
   useEffect(() => {
     if (search) return;
     let active = true;

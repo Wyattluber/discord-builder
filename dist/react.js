@@ -326,7 +326,7 @@ function EmojiGrid({ onPick }) {
   const [tab, setTab] = useState2("standard");
   const [q, setQ] = useState2("");
   const query = q.trim().toLowerCase();
-  const [search, setSearch] = useState2(emojiSearch);
+  const [search, setSearch] = useState2(() => emojiSearch);
   useEffect3(() => {
     if (search) return;
     let active = true;
