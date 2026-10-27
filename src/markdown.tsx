@@ -61,10 +61,15 @@ function pill(key: string, label: string, cls: string) {
   );
 }
 
+// The bot fills variables everywhere, code included, and code shows the value as plain text.
+function fillCode(text: string, vars: PreviewVars): string {
+  return text.replace(variablePattern(vars.syntax, "g"), (match, key: string) => (key in vars.values ? vars.values[key] : match));
+}
+
 const MATCHERS: Matcher[] = [
   // ``…`` before `…`: Discord's double-backtick inline code (may contain single backticks).
-  { re: /``(.+?)``/, build: (m, k) => <code key={k} className="rounded bg-black/40 px-1 py-0.5 font-mono text-[0.85em]">{m[1]}</code> },
-  { re: /`([^`]+)`/, build: (m, k) => <code key={k} className="rounded bg-black/40 px-1 py-0.5 font-mono text-[0.85em]">{m[1]}</code> },
+  { re: /``(.+?)``/, build: (m, k, v) => <code key={k} className="rounded bg-black/40 px-1 py-0.5 font-mono text-[0.85em]">{fillCode(m[1], v)}</code> },
+  { re: /`([^`]+)`/, build: (m, k, v) => <code key={k} className="rounded bg-black/40 px-1 py-0.5 font-mono text-[0.85em]">{fillCode(m[1], v)}</code> },
   // ***…*** before **…**: otherwise the bold matcher eats two of the three
   // stars and the third shows up as a stray character.
   { re: /\*\*\*([\s\S]+?)\*\*\*/, build: (m, k, v, mn) => <strong key={k}><em>{renderInline(m[1], v, k, mn)}</em></strong> },
@@ -254,7 +259,7 @@ export function Markdown({ text, vars, mentions }: { text: string; vars: Preview
       body = body.replace(/\n$/, "");
       blocks.push(
         <pre key={`s${si}`} className="my-1 overflow-x-auto rounded bg-black/40 p-2 font-mono text-[0.8em]">
-          {body}
+          {fillCode(body, vars)}
         </pre>,
       );
       return;

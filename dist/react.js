@@ -1652,10 +1652,13 @@ var MENTION_CLS = "bg-[#3e4374] font-medium text-[#dee0fc] hover:bg-[#5865f2]";
 function pill(key, label, cls) {
   return /* @__PURE__ */ jsx10("span", { className: `rounded px-1 ${cls}`, children: label }, key);
 }
+function fillCode(text, vars) {
+  return text.replace(variablePattern(vars.syntax, "g"), (match, key) => key in vars.values ? vars.values[key] : match);
+}
 var MATCHERS = [
   // ``…`` before `…`: Discord's double-backtick inline code (may contain single backticks).
-  { re: /``(.+?)``/, build: (m, k) => /* @__PURE__ */ jsx10("code", { className: "rounded bg-black/40 px-1 py-0.5 font-mono text-[0.85em]", children: m[1] }, k) },
-  { re: /`([^`]+)`/, build: (m, k) => /* @__PURE__ */ jsx10("code", { className: "rounded bg-black/40 px-1 py-0.5 font-mono text-[0.85em]", children: m[1] }, k) },
+  { re: /``(.+?)``/, build: (m, k, v) => /* @__PURE__ */ jsx10("code", { className: "rounded bg-black/40 px-1 py-0.5 font-mono text-[0.85em]", children: fillCode(m[1], v) }, k) },
+  { re: /`([^`]+)`/, build: (m, k, v) => /* @__PURE__ */ jsx10("code", { className: "rounded bg-black/40 px-1 py-0.5 font-mono text-[0.85em]", children: fillCode(m[1], v) }, k) },
   // ***…*** before **…**: otherwise the bold matcher eats two of the three
   // stars and the third shows up as a stray character.
   { re: /\*\*\*([\s\S]+?)\*\*\*/, build: (m, k, v, mn) => /* @__PURE__ */ jsx10("strong", { children: /* @__PURE__ */ jsx10("em", { children: renderInline(m[1], v, k, mn) }) }, k) },
@@ -1809,7 +1812,7 @@ function Markdown({ text, vars, mentions }) {
       if (nl !== -1 && /^[a-zA-Z0-9+_.#-]*$/.test(body.slice(0, nl))) body = body.slice(nl + 1);
       body = body.replace(/\n$/, "");
       blocks.push(
-        /* @__PURE__ */ jsx10("pre", { className: "my-1 overflow-x-auto rounded bg-black/40 p-2 font-mono text-[0.8em]", children: body }, `s${si}`)
+        /* @__PURE__ */ jsx10("pre", { className: "my-1 overflow-x-auto rounded bg-black/40 p-2 font-mono text-[0.8em]", children: fillCode(body, vars) }, `s${si}`)
       );
       return;
     }
