@@ -28,15 +28,19 @@ export {
 } from "./syntax";
 export type { BuilderIntegrations, ChannelLite, UserLite, EmojiLite, MediaAsset, MediaLibrary, SavedButtonAction } from "./context";
 
-export { serialize, serializeJson, validate } from "./serialize";
+export { serialize, serializeJson, validate, countEmbedChars, isEmptyEmbed } from "./serialize";
 export type { SerializedMessage, ValidationIssue } from "./serialize";
 export { deserialize } from "./deserialize";
 
 export {
   emptyMessage,
   startingMessage,
+  emptyEmbedMessage,
   makeBlock,
   makeContainer,
+  makeEmbed,
+  makeEmbedField,
+  messageFormat,
   IS_COMPONENTS_V2,
   LIMITS,
 } from "./constants";
@@ -52,6 +56,11 @@ export {
 
 export type {
   MessageModel,
+  MessageFormat,
+  EmbedNode,
+  EmbedField,
+  EmbedAuthor,
+  EmbedFooter,
   RootNode,
   ContainerNode,
   ContainerChild,

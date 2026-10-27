@@ -7,6 +7,7 @@ import {
   type ButtonNode,
   type ButtonStyleName,
   type ContainerChild,
+  type EmbedNode,
   type MessageModel,
   type RootNode,
   type SectionAccessory,
@@ -96,11 +97,47 @@ function rootFromApi(c: Raw): RootNode | null {
   return childFromApi(c);
 }
 
+const str = (v: unknown) => (typeof v === "string" ? v : "");
+
+function embedFromApi(e: Raw): EmbedNode {
+  return {
+    id: uid("emb"),
+    color: typeof e?.color === "number" ? e.color : null,
+    author: { name: str(e?.author?.name), url: str(e?.author?.url), iconUrl: str(e?.author?.icon_url) },
+    title: str(e?.title),
+    url: str(e?.url),
+    description: str(e?.description),
+    fields: (Array.isArray(e?.fields) ? e.fields : []).map((f: Raw) => ({
+      id: uid("fld"),
+      name: str(f?.name),
+      value: str(f?.value),
+      inline: !!f?.inline,
+    })),
+    imageUrl: str(e?.image?.url),
+    thumbnailUrl: str(e?.thumbnail?.url),
+    footer: { text: str(e?.footer?.text), iconUrl: str(e?.footer?.icon_url) },
+    // "now" as stored, or the ISO time of a message fetched from Discord
+    timestamp: !!e?.timestamp,
+  };
+}
+
 /**
  * Accepts either a `{ components: [...] }` payload or a bare components array.
- * Returns an empty model on malformed input rather than throwing.
+ * A payload with an `embeds` array is a classic message and reads back in
+ * embed format. Returns an empty model on malformed input rather than throwing.
  */
 export function deserialize(input: unknown): MessageModel {
+  if (input && !Array.isArray(input) && Array.isArray((input as Raw).embeds)) {
+    const raw = input as Raw;
+    return {
+      format: "embeds",
+      content: str(raw.content),
+      embeds: (raw.embeds as Raw[]).map(embedFromApi),
+      components: (Array.isArray(raw.components) ? raw.components : [])
+        .map(rootFromApi)
+        .filter((n: RootNode | null) => n?.type === "action_row") as RootNode[],
+    };
+  }
   let arr: Raw[] = [];
   if (Array.isArray(input)) arr = input as Raw[];
   else if (input && Array.isArray((input as Raw).components)) arr = (input as Raw).components;

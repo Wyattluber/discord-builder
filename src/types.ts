@@ -1,4 +1,5 @@
-// Discord "Components V2" message model.
+// Discord "Components V2" message model, and the classic embed message next
+// to it.
 //
 // This file is pure TypeScript with zero React / discord.js dependencies so it
 // can be copied into any project. The model is a builder-friendly tree; the
@@ -153,8 +154,56 @@ export type RootNode = ContainerNode | ContainerChild;
 
 export type AnyNode = RootNode;
 
+// ── classic embeds ───────────────────────────────────────────────
+// Discord rejects `content` and `embeds` on a Components V2 message, so a
+// message is one or the other: blocks, or text with embeds and the action
+// rows under them. Empty strings mean "not set" throughout.
+export type MessageFormat = "components" | "embeds";
+
+export interface EmbedField {
+  id: Id;
+  name: string;
+  value: string;
+  inline: boolean;
+}
+
+export interface EmbedAuthor {
+  name: string;
+  url: string;
+  iconUrl: string;
+}
+
+export interface EmbedFooter {
+  text: string;
+  iconUrl: string;
+}
+
+export interface EmbedNode {
+  id: Id;
+  /** 0xRRGGBB side bar, or null for Discord's default. */
+  color: number | null;
+  author: EmbedAuthor;
+  title: string;
+  /** Turns the title into a link. */
+  url: string;
+  description: string;
+  fields: EmbedField[];
+  imageUrl: string;
+  thumbnailUrl: string;
+  footer: EmbedFooter;
+  /** Shows the time the message is sent (stored as "now", filled in at send). */
+  timestamp: boolean;
+}
+
 export interface MessageModel {
+  /** Absent means "components", so every model written before embeds still reads the same. */
+  format?: MessageFormat;
+  /** Components V2: the blocks. Embed format: only the action rows under the embeds. */
   components: RootNode[];
+  /** Embed format only: the text above the embeds. */
+  content?: string;
+  /** Embed format only: up to 10 embeds. */
+  embeds?: EmbedNode[];
 }
 
 // ── template variables ───────────────────────────────────────────

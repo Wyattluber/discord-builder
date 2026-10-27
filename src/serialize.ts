@@ -2,21 +2,30 @@
 //
 // `serialize(model)` returns `{ flags, components }` ready to spread into a
 // REST/discord.js send call:  channel.send(serialize(model))
+// A model in embed format returns `{ content?, embeds, components }` instead:
+// no flag, the embeds, and only the action rows under them.
 //
 // Pure TypeScript. No React, no discord.js.
 
-import { IS_COMPONENTS_V2, LIMITS } from "./constants";
+import { IS_COMPONENTS_V2, LIMITS, messageFormat } from "./constants";
 import {
   BUTTON_STYLE_VALUES,
+  type ActionRowNode,
   type ButtonNode,
   type ContainerChild,
+  type EmbedNode,
   type MessageModel,
   type RootNode,
   type SectionAccessory,
 } from "./types";
 
 export interface SerializedMessage {
-  flags: number;
+  /** IS_COMPONENTS_V2 on a Components V2 message; absent on a classic one. */
+  flags?: number;
+  /** Classic message only: the text above the embeds, when there is any. */
+  content?: string;
+  /** Classic message only; an `embeds` array is what marks the format. */
+  embeds?: unknown[];
   components: unknown[];
 }
 
@@ -105,7 +114,49 @@ function rootToApi(node: RootNode): Record<string, unknown> {
   return childToApi(node);
 }
 
+// ── embeds ───────────────────────────────────────────────────────
+// Only what is set is written. An author without a name and a footer without
+// text are left out, because Discord requires those; the timestamp is the
+// literal "now", which the runtime turns into the send time.
+function embedToApi(e: EmbedNode): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (e.author.name) {
+    const author: Record<string, unknown> = { name: e.author.name };
+    if (e.author.url) author.url = e.author.url;
+    if (e.author.iconUrl) author.icon_url = e.author.iconUrl;
+    out.author = author;
+  }
+  if (e.title) out.title = e.title;
+  if (e.url) out.url = e.url;
+  if (e.description) out.description = e.description;
+  if (e.fields.length > 0) {
+    out.fields = e.fields.map((f) => {
+      const field: Record<string, unknown> = { name: f.name, value: f.value };
+      if (f.inline) field.inline = true;
+      return field;
+    });
+  }
+  if (e.imageUrl) out.image = { url: e.imageUrl };
+  if (e.thumbnailUrl) out.thumbnail = { url: e.thumbnailUrl };
+  if (e.footer.text) {
+    const footer: Record<string, unknown> = { text: e.footer.text };
+    if (e.footer.iconUrl) footer.icon_url = e.footer.iconUrl;
+    out.footer = footer;
+  }
+  if (e.timestamp) out.timestamp = "now";
+  if (e.color != null) out.color = e.color;
+  return out;
+}
+
 export function serialize(model: MessageModel): SerializedMessage {
+  if (messageFormat(model) === "embeds") {
+    return {
+      ...(model.content ? { content: model.content } : {}),
+      embeds: (model.embeds ?? []).map(embedToApi),
+      // Without the V2 flag Discord takes nothing but action rows here
+      components: model.components.filter((n) => n.type === "action_row").map(rootToApi),
+    };
+  }
   return {
     flags: IS_COMPONENTS_V2,
     components: model.components.map(rootToApi),
@@ -129,6 +180,77 @@ export function countComponents(nodes: RootNode[]): number {
     if (node.type === "media_gallery") n += node.items.length;
   }
   return n;
+}
+
+/** The characters Discord counts toward its 6000 across all embeds of a message. */
+export function countEmbedChars(embeds: EmbedNode[]): number {
+  let n = 0;
+  for (const e of embeds) {
+    n += e.title.length + e.description.length + e.author.name.length + e.footer.text.length;
+    for (const f of e.fields) n += f.name.length + f.value.length;
+  }
+  return n;
+}
+
+/** An embed that would show nothing: no text, no fields, no picture, no author or footer. */
+export function isEmptyEmbed(e: EmbedNode): boolean {
+  return !e.title.trim() && !e.description.trim() && e.fields.length === 0
+    && !e.imageUrl.trim() && !e.thumbnailUrl.trim()
+    && !e.author.name.trim() && !e.footer.text.trim();
+}
+
+function tooLong(text: string, max: number, what: string, path: string, issues: ValidationIssue[]) {
+  if (text.length > max) issues.push({ level: "error", path, message: `${what} is longer than ${max} characters.` });
+}
+
+function validateEmbedMessage(model: MessageModel, issues: ValidationIssue[]) {
+  const content = model.content ?? "";
+  const embeds = model.embeds ?? [];
+  const rows = model.components.filter((n): n is ActionRowNode => n.type === "action_row");
+
+  if (!content.trim() && embeds.every(isEmptyEmbed) && rows.length === 0) {
+    issues.push({ level: "error", path: "Message", message: "The message is empty. Add text, an embed or buttons." });
+  }
+  tooLong(content, LIMITS.contentChars, "Message text", "Message", issues);
+  if (embeds.length > LIMITS.embeds) {
+    issues.push({ level: "error", path: "Message", message: `Too many embeds: ${embeds.length} of ${LIMITS.embeds}.` });
+  }
+  const chars = countEmbedChars(embeds);
+  if (chars > LIMITS.embedTotalChars) {
+    issues.push({ level: "error", path: "Message", message: `Too much text in the embeds: ${chars} of ${LIMITS.embedTotalChars} characters.` });
+  }
+
+  embeds.forEach((e, i) => {
+    const path = `Embed ${i + 1}`;
+    if (isEmptyEmbed(e)) issues.push({ level: "warning", path, message: "The embed is empty." });
+    tooLong(e.author.name, LIMITS.embedAuthorNameChars, "Author name", path, issues);
+    tooLong(e.title, LIMITS.embedTitleChars, "Title", path, issues);
+    tooLong(e.description, LIMITS.embedDescriptionChars, "Description", path, issues);
+    tooLong(e.footer.text, LIMITS.embedFooterChars, "Footer", path, issues);
+    if (!e.author.name.trim() && (e.author.url || e.author.iconUrl)) {
+      issues.push({ level: "warning", path, message: "The author link and icon only show with a name." });
+    }
+    if (!e.footer.text.trim() && e.footer.iconUrl) {
+      issues.push({ level: "warning", path, message: "The footer icon only shows with footer text." });
+    }
+    if (e.fields.length > LIMITS.embedFields) {
+      issues.push({ level: "error", path, message: `Too many fields: ${e.fields.length} of ${LIMITS.embedFields}.` });
+    }
+    e.fields.forEach((f, j) => {
+      const fieldPath = `${path} › field ${j + 1}`;
+      if (!f.name.trim() || !f.value.trim()) issues.push({ level: "warning", path: fieldPath, message: "Field needs a name and a value." });
+      tooLong(f.name, LIMITS.embedFieldNameChars, "Field name", fieldPath, issues);
+      tooLong(f.value, LIMITS.embedFieldValueChars, "Field value", fieldPath, issues);
+    });
+  });
+
+  if (rows.length < model.components.length) {
+    issues.push({ level: "warning", path: "Message", message: "Only action rows are sent with embeds." });
+  }
+  if (rows.length > LIMITS.actionRows) {
+    issues.push({ level: "error", path: "Message", message: `Too many action rows: ${rows.length} of ${LIMITS.actionRows}.` });
+  }
+  rows.forEach((row, i) => validateChild(row, `Action row ${i + 1}`, issues));
 }
 
 function validateButton(b: ButtonNode, path: string, issues: ValidationIssue[]) {
@@ -188,6 +310,10 @@ function validateChild(node: ContainerChild, path: string, issues: ValidationIss
 
 export function validate(model: MessageModel): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
+  if (messageFormat(model) === "embeds") {
+    validateEmbedMessage(model, issues);
+    return issues;
+  }
   if (model.components.length === 0) {
     issues.push({ level: "error", path: "Message", message: "The message is empty. Add a block." });
   }

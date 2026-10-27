@@ -1,7 +1,7 @@
 import * as react from 'react';
 import react__default, { ReactNode, ButtonHTMLAttributes, InputHTMLAttributes, TextareaHTMLAttributes, ComponentType } from 'react';
 import { ButtonActionData, TemplateVariable, MessageModel, PlaceholderSyntax } from './core.js';
-export { ButtonAction, ButtonActionType, ButtonNode, CLICKER_VARIABLES, ContainerChild, ContainerNode, DISCORD_VARIABLES, IS_COMPONENTS_V2, LIMITS, PERCENT_PLACEHOLDERS, RootNode, SerializedMessage, ValidationIssue, applyVariableSamples, deserialize, emptyMessage, makeBlock, makeContainer, mergeVariables, serialize, serializeJson, startingMessage, substituteVariables, validate, variablePattern, wrapVariable } from './core.js';
+export { ButtonAction, ButtonActionType, ButtonNode, CLICKER_VARIABLES, ContainerChild, ContainerNode, DISCORD_VARIABLES, EmbedAuthor, EmbedField, EmbedFooter, EmbedNode, IS_COMPONENTS_V2, LIMITS, MessageFormat, PERCENT_PLACEHOLDERS, RootNode, SerializedMessage, ValidationIssue, applyVariableSamples, countEmbedChars, deserialize, emptyEmbedMessage, emptyMessage, isEmptyEmbed, makeBlock, makeContainer, makeEmbed, makeEmbedField, mergeVariables, messageFormat, serialize, serializeJson, startingMessage, substituteVariables, validate, variablePattern, wrapVariable } from './core.js';
 
 /** Uploads an image and resolves to its public URL. Injected by the host app. */
 type UploadImageFn = (file: File) => Promise<string>;

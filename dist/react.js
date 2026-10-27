@@ -13,14 +13,20 @@ import {
   applyVariableSamples,
   closingVariablePattern,
   countComponents,
+  countEmbedChars,
   deserialize,
+  emptyEmbedMessage,
   emptyMessage,
   hexOf,
+  isEmptyEmbed,
   makeBlock,
   makeButton,
   makeChildBlock,
   makeContainer,
+  makeEmbed,
+  makeEmbedField,
   mergeVariables,
+  messageFormat,
   partialVariablePattern,
   serialize,
   serializeJson,
@@ -30,7 +36,7 @@ import {
   validate,
   variablePattern,
   wrapVariable
-} from "./chunk-S64MESBS.js";
+} from "./chunk-CMSDHKDR.js";
 
 // src/DiscordMessageBuilder.tsx
 import { useMemo, useRef as useRef5, useState as useState5 } from "react";
@@ -2305,11 +2311,17 @@ export {
   SyntaxContext,
   Textarea,
   applyVariableSamples,
+  countEmbedChars,
   deserialize,
+  emptyEmbedMessage,
   emptyMessage,
+  isEmptyEmbed,
   makeBlock,
   makeContainer,
+  makeEmbed,
+  makeEmbedField,
   mergeVariables,
+  messageFormat,
   previewVars,
   serialize,
   serializeJson,

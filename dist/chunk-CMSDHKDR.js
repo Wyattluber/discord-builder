@@ -15,7 +15,20 @@ var LIMITS = {
   sectionTexts: 3,
   galleryItems: 10,
   textDisplayChars: 4e3,
-  buttonLabelChars: 80
+  buttonLabelChars: 80,
+  // Classic messages: the text, the embeds and the rows under them
+  contentChars: 2e3,
+  embeds: 10,
+  embedTitleChars: 256,
+  embedDescriptionChars: 4096,
+  embedFields: 25,
+  embedFieldNameChars: 256,
+  embedFieldValueChars: 1024,
+  embedFooterChars: 2048,
+  embedAuthorNameChars: 256,
+  /** Title, description, field names and values, footer and author name across all embeds. */
+  embedTotalChars: 6e3,
+  actionRows: 5
 };
 var BUTTON_STYLE_OPTIONS = [
   { value: "primary", label: "Blurple" },
@@ -144,6 +157,30 @@ function emptyMessage() {
 function startingMessage() {
   return { components: [makeText("")] };
 }
+function makeEmbedField() {
+  return { id: uid("fld"), name: "", value: "", inline: false };
+}
+function makeEmbed() {
+  return {
+    id: uid("emb"),
+    color: ACCENT_PRESETS[0].value,
+    author: { name: "", url: "", iconUrl: "" },
+    title: "",
+    url: "",
+    description: "",
+    fields: [],
+    imageUrl: "",
+    thumbnailUrl: "",
+    footer: { text: "", iconUrl: "" },
+    timestamp: false
+  };
+}
+function emptyEmbedMessage() {
+  return { format: "embeds", content: "", embeds: [makeEmbed()], components: [] };
+}
+function messageFormat(model) {
+  return model.format === "embeds" ? "embeds" : "components";
+}
 function hexOf(color) {
   return color != null ? `#${color.toString(16).padStart(6, "0")}` : void 0;
 }
@@ -220,7 +257,44 @@ function rootToApi(node) {
   }
   return childToApi(node);
 }
+function embedToApi(e) {
+  const out = {};
+  if (e.author.name) {
+    const author = { name: e.author.name };
+    if (e.author.url) author.url = e.author.url;
+    if (e.author.iconUrl) author.icon_url = e.author.iconUrl;
+    out.author = author;
+  }
+  if (e.title) out.title = e.title;
+  if (e.url) out.url = e.url;
+  if (e.description) out.description = e.description;
+  if (e.fields.length > 0) {
+    out.fields = e.fields.map((f) => {
+      const field = { name: f.name, value: f.value };
+      if (f.inline) field.inline = true;
+      return field;
+    });
+  }
+  if (e.imageUrl) out.image = { url: e.imageUrl };
+  if (e.thumbnailUrl) out.thumbnail = { url: e.thumbnailUrl };
+  if (e.footer.text) {
+    const footer = { text: e.footer.text };
+    if (e.footer.iconUrl) footer.icon_url = e.footer.iconUrl;
+    out.footer = footer;
+  }
+  if (e.timestamp) out.timestamp = "now";
+  if (e.color != null) out.color = e.color;
+  return out;
+}
 function serialize(model) {
+  if (messageFormat(model) === "embeds") {
+    return {
+      ...model.content ? { content: model.content } : {},
+      embeds: (model.embeds ?? []).map(embedToApi),
+      // Without the V2 flag Discord takes nothing but action rows here
+      components: model.components.filter((n) => n.type === "action_row").map(rootToApi)
+    };
+  }
   return {
     flags: IS_COMPONENTS_V2,
     components: model.components.map(rootToApi)
@@ -239,6 +313,66 @@ function countComponents(nodes) {
     if (node.type === "media_gallery") n += node.items.length;
   }
   return n;
+}
+function countEmbedChars(embeds) {
+  let n = 0;
+  for (const e of embeds) {
+    n += e.title.length + e.description.length + e.author.name.length + e.footer.text.length;
+    for (const f of e.fields) n += f.name.length + f.value.length;
+  }
+  return n;
+}
+function isEmptyEmbed(e) {
+  return !e.title.trim() && !e.description.trim() && e.fields.length === 0 && !e.imageUrl.trim() && !e.thumbnailUrl.trim() && !e.author.name.trim() && !e.footer.text.trim();
+}
+function tooLong(text, max, what, path, issues) {
+  if (text.length > max) issues.push({ level: "error", path, message: `${what} is longer than ${max} characters.` });
+}
+function validateEmbedMessage(model, issues) {
+  const content = model.content ?? "";
+  const embeds = model.embeds ?? [];
+  const rows = model.components.filter((n) => n.type === "action_row");
+  if (!content.trim() && embeds.every(isEmptyEmbed) && rows.length === 0) {
+    issues.push({ level: "error", path: "Message", message: "The message is empty. Add text, an embed or buttons." });
+  }
+  tooLong(content, LIMITS.contentChars, "Message text", "Message", issues);
+  if (embeds.length > LIMITS.embeds) {
+    issues.push({ level: "error", path: "Message", message: `Too many embeds: ${embeds.length} of ${LIMITS.embeds}.` });
+  }
+  const chars = countEmbedChars(embeds);
+  if (chars > LIMITS.embedTotalChars) {
+    issues.push({ level: "error", path: "Message", message: `Too much text in the embeds: ${chars} of ${LIMITS.embedTotalChars} characters.` });
+  }
+  embeds.forEach((e, i) => {
+    const path = `Embed ${i + 1}`;
+    if (isEmptyEmbed(e)) issues.push({ level: "warning", path, message: "The embed is empty." });
+    tooLong(e.author.name, LIMITS.embedAuthorNameChars, "Author name", path, issues);
+    tooLong(e.title, LIMITS.embedTitleChars, "Title", path, issues);
+    tooLong(e.description, LIMITS.embedDescriptionChars, "Description", path, issues);
+    tooLong(e.footer.text, LIMITS.embedFooterChars, "Footer", path, issues);
+    if (!e.author.name.trim() && (e.author.url || e.author.iconUrl)) {
+      issues.push({ level: "warning", path, message: "The author link and icon only show with a name." });
+    }
+    if (!e.footer.text.trim() && e.footer.iconUrl) {
+      issues.push({ level: "warning", path, message: "The footer icon only shows with footer text." });
+    }
+    if (e.fields.length > LIMITS.embedFields) {
+      issues.push({ level: "error", path, message: `Too many fields: ${e.fields.length} of ${LIMITS.embedFields}.` });
+    }
+    e.fields.forEach((f, j) => {
+      const fieldPath = `${path} \u203A field ${j + 1}`;
+      if (!f.name.trim() || !f.value.trim()) issues.push({ level: "warning", path: fieldPath, message: "Field needs a name and a value." });
+      tooLong(f.name, LIMITS.embedFieldNameChars, "Field name", fieldPath, issues);
+      tooLong(f.value, LIMITS.embedFieldValueChars, "Field value", fieldPath, issues);
+    });
+  });
+  if (rows.length < model.components.length) {
+    issues.push({ level: "warning", path: "Message", message: "Only action rows are sent with embeds." });
+  }
+  if (rows.length > LIMITS.actionRows) {
+    issues.push({ level: "error", path: "Message", message: `Too many action rows: ${rows.length} of ${LIMITS.actionRows}.` });
+  }
+  rows.forEach((row, i) => validateChild(row, `Action row ${i + 1}`, issues));
 }
 function validateButton(b, path, issues) {
   if (!b.label && !b.emoji) {
@@ -295,6 +429,10 @@ function validateChild(node, path, issues) {
 }
 function validate(model) {
   const issues = [];
+  if (messageFormat(model) === "embeds") {
+    validateEmbedMessage(model, issues);
+    return issues;
+  }
   if (model.components.length === 0) {
     issues.push({ level: "error", path: "Message", message: "The message is empty. Add a block." });
   }
@@ -396,7 +534,38 @@ function rootFromApi(c) {
   }
   return childFromApi(c);
 }
+var str = (v) => typeof v === "string" ? v : "";
+function embedFromApi(e) {
+  return {
+    id: uid("emb"),
+    color: typeof e?.color === "number" ? e.color : null,
+    author: { name: str(e?.author?.name), url: str(e?.author?.url), iconUrl: str(e?.author?.icon_url) },
+    title: str(e?.title),
+    url: str(e?.url),
+    description: str(e?.description),
+    fields: (Array.isArray(e?.fields) ? e.fields : []).map((f) => ({
+      id: uid("fld"),
+      name: str(f?.name),
+      value: str(f?.value),
+      inline: !!f?.inline
+    })),
+    imageUrl: str(e?.image?.url),
+    thumbnailUrl: str(e?.thumbnail?.url),
+    footer: { text: str(e?.footer?.text), iconUrl: str(e?.footer?.icon_url) },
+    // "now" as stored, or the ISO time of a message fetched from Discord
+    timestamp: !!e?.timestamp
+  };
+}
 function deserialize(input) {
+  if (input && !Array.isArray(input) && Array.isArray(input.embeds)) {
+    const raw = input;
+    return {
+      format: "embeds",
+      content: str(raw.content),
+      embeds: raw.embeds.map(embedFromApi),
+      components: (Array.isArray(raw.components) ? raw.components : []).map(rootFromApi).filter((n) => n?.type === "action_row")
+    };
+  }
   let arr = [];
   if (Array.isArray(input)) arr = input;
   else if (input && Array.isArray(input.components)) arr = input.components;
@@ -488,10 +657,16 @@ export {
   makeChildBlock,
   emptyMessage,
   startingMessage,
+  makeEmbedField,
+  makeEmbed,
+  emptyEmbedMessage,
+  messageFormat,
   hexOf,
   serialize,
   serializeJson,
   countComponents,
+  countEmbedChars,
+  isEmptyEmbed,
   validate,
   deserialize,
   PERCENT_PLACEHOLDERS,

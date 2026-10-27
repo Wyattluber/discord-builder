@@ -7,9 +7,13 @@ import type {
   ButtonStyleName,
   ContainerChild,
   ContainerNode,
+  EmbedField,
+  EmbedNode,
   FileNode,
   Id,
   MediaGalleryNode,
+  MessageFormat,
+  MessageModel,
   RootNode,
   SectionNode,
   SeparatorNode,
@@ -27,6 +31,19 @@ export const LIMITS = {
   galleryItems: 10,
   textDisplayChars: 4000,
   buttonLabelChars: 80,
+  // Classic messages: the text, the embeds and the rows under them
+  contentChars: 2000,
+  embeds: 10,
+  embedTitleChars: 256,
+  embedDescriptionChars: 4096,
+  embedFields: 25,
+  embedFieldNameChars: 256,
+  embedFieldValueChars: 1024,
+  embedFooterChars: 2048,
+  embedAuthorNameChars: 256,
+  /** Title, description, field names and values, footer and author name across all embeds. */
+  embedTotalChars: 6000,
+  actionRows: 5,
 } as const;
 
 export const BUTTON_STYLE_OPTIONS: { value: ButtonStyleName; label: string }[] = [
@@ -181,6 +198,37 @@ export function emptyMessage(): { components: RootNode[] } {
 /** A minimal starter: a single text block (for plain messages). */
 export function startingMessage(): { components: RootNode[] } {
   return { components: [makeText("")] };
+}
+
+// ── classic embeds ───────────────────────────────────────────────
+export function makeEmbedField(): EmbedField {
+  return { id: uid("fld"), name: "", value: "", inline: false };
+}
+
+export function makeEmbed(): EmbedNode {
+  return {
+    id: uid("emb"),
+    color: ACCENT_PRESETS[0].value,
+    author: { name: "", url: "", iconUrl: "" },
+    title: "",
+    url: "",
+    description: "",
+    fields: [],
+    imageUrl: "",
+    thumbnailUrl: "",
+    footer: { text: "", iconUrl: "" },
+    timestamp: false,
+  };
+}
+
+/** A starter classic message: no text, one branded embed, no buttons. */
+export function emptyEmbedMessage(): MessageModel {
+  return { format: "embeds", content: "", embeds: [makeEmbed()], components: [] };
+}
+
+/** The format a model is in; a model without one is Components V2. */
+export function messageFormat(model: Pick<MessageModel, "format">): MessageFormat {
+  return model.format === "embeds" ? "embeds" : "components";
 }
 
 /** A color number as a CSS hex string, or undefined when there is none. */

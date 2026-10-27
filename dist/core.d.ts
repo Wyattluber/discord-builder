@@ -111,8 +111,47 @@ type ContainerChild = TextNode | SectionNode | SeparatorNode | MediaGalleryNode 
 /** Any top-level block. */
 type RootNode = ContainerNode | ContainerChild;
 type AnyNode = RootNode;
+type MessageFormat = "components" | "embeds";
+interface EmbedField {
+    id: Id;
+    name: string;
+    value: string;
+    inline: boolean;
+}
+interface EmbedAuthor {
+    name: string;
+    url: string;
+    iconUrl: string;
+}
+interface EmbedFooter {
+    text: string;
+    iconUrl: string;
+}
+interface EmbedNode {
+    id: Id;
+    /** 0xRRGGBB side bar, or null for Discord's default. */
+    color: number | null;
+    author: EmbedAuthor;
+    title: string;
+    /** Turns the title into a link. */
+    url: string;
+    description: string;
+    fields: EmbedField[];
+    imageUrl: string;
+    thumbnailUrl: string;
+    footer: EmbedFooter;
+    /** Shows the time the message is sent (stored as "now", filled in at send). */
+    timestamp: boolean;
+}
 interface MessageModel {
+    /** Absent means "components", so every model written before embeds still reads the same. */
+    format?: MessageFormat;
+    /** Components V2: the blocks. Embed format: only the action rows under the embeds. */
     components: RootNode[];
+    /** Embed format only: the text above the embeds. */
+    content?: string;
+    /** Embed format only: up to 10 embeds. */
+    embeds?: EmbedNode[];
 }
 interface TemplateVariable {
     /** Name without the percent signs, e.g. "prize". */
@@ -135,6 +174,18 @@ declare const LIMITS: {
     readonly galleryItems: 10;
     readonly textDisplayChars: 4000;
     readonly buttonLabelChars: 80;
+    readonly contentChars: 2000;
+    readonly embeds: 10;
+    readonly embedTitleChars: 256;
+    readonly embedDescriptionChars: 4096;
+    readonly embedFields: 25;
+    readonly embedFieldNameChars: 256;
+    readonly embedFieldValueChars: 1024;
+    readonly embedFooterChars: 2048;
+    readonly embedAuthorNameChars: 256;
+    /** Title, description, field names and values, footer and author name across all embeds. */
+    readonly embedTotalChars: 6000;
+    readonly actionRows: 5;
 };
 declare const BUTTON_STYLE_OPTIONS: {
     value: ButtonStyleName;
@@ -170,11 +221,22 @@ declare function emptyMessage(): {
 declare function startingMessage(): {
     components: RootNode[];
 };
+declare function makeEmbedField(): EmbedField;
+declare function makeEmbed(): EmbedNode;
+/** A starter classic message: no text, one branded embed, no buttons. */
+declare function emptyEmbedMessage(): MessageModel;
+/** The format a model is in; a model without one is Components V2. */
+declare function messageFormat(model: Pick<MessageModel, "format">): MessageFormat;
 /** A color number as a CSS hex string, or undefined when there is none. */
 declare function hexOf(color?: number | null): string | undefined;
 
 interface SerializedMessage {
-    flags: number;
+    /** IS_COMPONENTS_V2 on a Components V2 message; absent on a classic one. */
+    flags?: number;
+    /** Classic message only: the text above the embeds, when there is any. */
+    content?: string;
+    /** Classic message only; an `embeds` array is what marks the format. */
+    embeds?: unknown[];
     components: unknown[];
 }
 interface ValidationIssue {
@@ -187,11 +249,16 @@ declare function serialize(model: MessageModel): SerializedMessage;
 declare function serializeJson(model: MessageModel, indent?: number): string;
 /** Every node the message carries, children included; Discord caps the total. */
 declare function countComponents(nodes: RootNode[]): number;
+/** The characters Discord counts toward its 6000 across all embeds of a message. */
+declare function countEmbedChars(embeds: EmbedNode[]): number;
+/** An embed that would show nothing: no text, no fields, no picture, no author or footer. */
+declare function isEmptyEmbed(e: EmbedNode): boolean;
 declare function validate(model: MessageModel): ValidationIssue[];
 
 /**
  * Accepts either a `{ components: [...] }` payload or a bare components array.
- * Returns an empty model on malformed input rather than throwing.
+ * A payload with an `embeds` array is a classic message and reads back in
+ * embed format. Returns an empty model on malformed input rather than throwing.
  */
 declare function deserialize(input: unknown): MessageModel;
 
@@ -238,4 +305,4 @@ declare function mergeVariables(...lists: (TemplateVariable[] | undefined)[]): T
 /** Replaces preset samples with the live values a host knows, keyed by name. */
 declare function applyVariableSamples(list: TemplateVariable[], samples: Record<string, string> | undefined): TemplateVariable[];
 
-export { ACCENT_PRESETS, type ActionRowNode, type AnyNode, BLOCK_DESCRIPTIONS, BLOCK_LABELS, BUTTON_STYLE_OPTIONS, BUTTON_STYLE_VALUES, type BlockKind, type ButtonAccessory, type ButtonAction, type ButtonActionData, type ButtonActionType, type ButtonNode, type ButtonStyleName, CHILD_BLOCK_KINDS, CLICKER_VARIABLES, type ContainerChild, type ContainerNode, DISCORD_VARIABLES, type FileNode, IS_COMPONENTS_V2, type Id, LIMITS, type MediaGalleryNode, type MediaItem, type MessageModel, PERCENT_PLACEHOLDERS, type PlaceholderSyntax, ROOT_BLOCK_KINDS, type RootNode, type SectionAccessory, type SectionNode, type SeparatorNode, type SeparatorSpacing, type SerializedMessage, type TemplateVariable, type TextNode, type ThumbnailAccessory, type ValidationIssue, applyVariableSamples, closingVariablePattern, countComponents, deserialize, emptyMessage, hexOf, makeActionRow, makeBlock, makeButton, makeChildBlock, makeContainer, makeFile, makeMediaGallery, makeSection, makeSeparator, makeText, mergeVariables, partialVariablePattern, serialize, serializeJson, startingMessage, substituteVariables, uid, validate, variablePattern, wrapVariable };
+export { ACCENT_PRESETS, type ActionRowNode, type AnyNode, BLOCK_DESCRIPTIONS, BLOCK_LABELS, BUTTON_STYLE_OPTIONS, BUTTON_STYLE_VALUES, type BlockKind, type ButtonAccessory, type ButtonAction, type ButtonActionData, type ButtonActionType, type ButtonNode, type ButtonStyleName, CHILD_BLOCK_KINDS, CLICKER_VARIABLES, type ContainerChild, type ContainerNode, DISCORD_VARIABLES, type EmbedAuthor, type EmbedField, type EmbedFooter, type EmbedNode, type FileNode, IS_COMPONENTS_V2, type Id, LIMITS, type MediaGalleryNode, type MediaItem, type MessageFormat, type MessageModel, PERCENT_PLACEHOLDERS, type PlaceholderSyntax, ROOT_BLOCK_KINDS, type RootNode, type SectionAccessory, type SectionNode, type SeparatorNode, type SeparatorSpacing, type SerializedMessage, type TemplateVariable, type TextNode, type ThumbnailAccessory, type ValidationIssue, applyVariableSamples, closingVariablePattern, countComponents, countEmbedChars, deserialize, emptyEmbedMessage, emptyMessage, hexOf, isEmptyEmbed, makeActionRow, makeBlock, makeButton, makeChildBlock, makeContainer, makeEmbed, makeEmbedField, makeFile, makeMediaGallery, makeSection, makeSeparator, makeText, mergeVariables, messageFormat, partialVariablePattern, serialize, serializeJson, startingMessage, substituteVariables, uid, validate, variablePattern, wrapVariable };
