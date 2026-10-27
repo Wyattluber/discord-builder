@@ -24,10 +24,12 @@ __export(runtime_exports, {
   PERCENT_PLACEHOLDERS: () => PERCENT_PLACEHOLDERS,
   collectMediaAttachments: () => collectMediaAttachments,
   editComponentsMessage: () => editComponentsMessage,
+  editPreparedMessage: () => editPreparedMessage,
   mentionsInTemplate: () => mentionsInTemplate,
   preparePayload: () => preparePayload,
   preparedOrNull: () => preparedOrNull,
   sendComponentsMessage: () => sendComponentsMessage,
+  sendPreparedMessage: () => sendPreparedMessage,
   substituteVars: () => substituteVars,
   variablePattern: () => variablePattern
 });
@@ -52,14 +54,14 @@ function collectMediaAttachments(payload, media) {
   const files = [];
   if (!media?.match || !media?.load) return files;
   const seen = /* @__PURE__ */ new Map();
-  const walk = (value) => {
+  const walk = (value, urlIsLink = false) => {
     if (Array.isArray(value)) {
-      value.forEach(walk);
+      value.forEach((v) => walk(v, urlIsLink));
       return;
     }
     if (!value || typeof value !== "object") return;
     for (const [key, val] of Object.entries(value)) {
-      if (key === "url" && typeof val === "string") {
+      if ((key === "url" && !urlIsLink || key === "icon_url") && typeof val === "string") {
         const match = val.match(media.match);
         if (!match) continue;
         const id = match[1];
@@ -72,7 +74,7 @@ function collectMediaAttachments(payload, media) {
         }
         value[key] = `attachment://${seen.get(id)}`;
       } else {
-        walk(val);
+        walk(val, key === "embeds" || key === "author");
       }
     }
   };
@@ -136,6 +138,37 @@ function stripEmptyText(value) {
     });
   }
 }
+var blank = (text) => typeof text !== "string" || text.trim() === "";
+function cleanEmbeds(embeds, syntax = PERCENT_PLACEHOLDERS) {
+  const dropUrl = (obj, key) => {
+    if (obj && key in obj && unresolvedUrl(obj[key], syntax)) delete obj[key];
+  };
+  return embeds.filter((embed) => {
+    if (!embed || typeof embed !== "object") return false;
+    if (Array.isArray(embed.fields)) {
+      embed.fields = embed.fields.filter((f) => !blank(f?.name) && !blank(f?.value));
+      if (embed.fields.length === 0) delete embed.fields;
+    }
+    for (const key of ["image", "thumbnail"]) {
+      if (embed[key] && unresolvedUrl(embed[key].url, syntax)) delete embed[key];
+    }
+    dropUrl(embed, "url");
+    if (embed.author) {
+      dropUrl(embed.author, "url");
+      dropUrl(embed.author, "icon_url");
+      if (blank(embed.author.name)) delete embed.author;
+    }
+    if (embed.footer) {
+      dropUrl(embed.footer, "icon_url");
+      if (blank(embed.footer.text)) delete embed.footer;
+    }
+    if ("title" in embed && blank(embed.title)) delete embed.title;
+    if ("description" in embed && blank(embed.description)) delete embed.description;
+    if (embed.timestamp === "now") embed.timestamp = (/* @__PURE__ */ new Date()).toISOString();
+    else if ("timestamp" in embed && (typeof embed.timestamp !== "string" || Number.isNaN(Date.parse(embed.timestamp)))) delete embed.timestamp;
+    return ["title", "description", "fields", "image", "thumbnail", "author", "footer"].some((key) => key in embed);
+  });
+}
 function restBody(components, files, allowedMentions) {
   const body = {
     flags: COMPONENTS_V2_FLAG,
@@ -161,6 +194,33 @@ async function editComponentsMessage(client, channelId, messageId, components, o
     files
   });
 }
+function preparedBody(prepared, files, allowedMentions, edit) {
+  if (prepared.componentsV2) return restBody(prepared.components, files, allowedMentions);
+  const body = {
+    embeds: prepared.embeds,
+    components: prepared.components,
+    allowed_mentions: allowedMentions ?? { parse: [] }
+  };
+  if (prepared.content !== void 0 || edit) body.content = prepared.content ?? "";
+  if (files.length > 0) {
+    body.attachments = files.map((f, i) => ({ id: i, filename: f.name }));
+  }
+  return body;
+}
+async function sendPreparedMessage(client, channelId, prepared, options = {}) {
+  const files = options.files ?? prepared.files ?? [];
+  return client.rest.post(`/channels/${channelId}/messages`, {
+    body: preparedBody(prepared, files, options.allowedMentions ?? prepared.allowedMentions, false),
+    files
+  });
+}
+async function editPreparedMessage(client, channelId, messageId, prepared, options = {}) {
+  const files = options.files ?? prepared.files ?? [];
+  return client.rest.patch(`/channels/${channelId}/messages/${messageId}`, {
+    body: preparedBody(prepared, files, options.allowedMentions ?? prepared.allowedMentions, true),
+    files
+  });
+}
 function mentionsInTemplate(rawPayload) {
   const text = typeof rawPayload === "string" ? rawPayload : JSON.stringify(rawPayload ?? {});
   const parse = /@(everyone|here)\b/.test(text) ? ["everyone"] : [];
@@ -171,12 +231,17 @@ function mentionsInTemplate(rawPayload) {
 function preparePayload(rawPayload, vars, { syntax = PERCENT_PLACEHOLDERS, media = null } = {}) {
   const template = typeof rawPayload === "string" ? JSON.parse(rawPayload) : rawPayload;
   const payload = substituteVars(template, vars, syntax);
+  const classic = Array.isArray(payload?.embeds);
+  if (classic) payload.embeds = cleanEmbeds(payload.embeds, syntax);
   stripUnresolvedMedia(payload, syntax);
   stripUnresolvedLinks(payload, syntax);
   stripEmptyText(payload);
   const files = collectMediaAttachments(payload, media);
   return {
     components: payload?.components ?? [],
+    embeds: classic ? payload.embeds : [],
+    content: classic && !blank(payload.content) ? payload.content : void 0,
+    componentsV2: !classic,
     files,
     allowedMentions: payload?.allowed_mentions ?? mentionsInTemplate(template)
   };
@@ -185,7 +250,8 @@ function preparedOrNull(rawPayload, vars, options = {}) {
   if (!rawPayload) return null;
   try {
     const prepared = preparePayload(rawPayload, vars, options);
-    return prepared.components.length > 0 ? prepared : null;
+    const empty = prepared.components.length === 0 && prepared.embeds.length === 0 && prepared.content === void 0;
+    return empty ? null : prepared;
   } catch (err) {
     console.error(`[Builder] Invalid ${options.label} payload, using default:`, err.message);
     return null;
@@ -197,10 +263,12 @@ function preparedOrNull(rawPayload, vars, options = {}) {
   PERCENT_PLACEHOLDERS,
   collectMediaAttachments,
   editComponentsMessage,
+  editPreparedMessage,
   mentionsInTemplate,
   preparePayload,
   preparedOrNull,
   sendComponentsMessage,
+  sendPreparedMessage,
   substituteVars,
   variablePattern
 });

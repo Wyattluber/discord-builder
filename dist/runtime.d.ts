@@ -28,6 +28,12 @@ interface AllowedMentions {
 }
 interface PreparedPayload {
     components: unknown[];
+    /** Classic message: the embeds that are left. Empty for Components V2. */
+    embeds: unknown[];
+    /** Classic message: the text above the embeds, undefined when there is none. */
+    content?: string;
+    /** True for a Components V2 payload; false for a classic one (a stored `embeds` array). */
+    componentsV2: boolean;
     files: MessageFile[];
     allowedMentions: AllowedMentions;
 }
@@ -68,6 +74,14 @@ declare function sendComponentsMessage(client: RestClient, channelId: string, co
 /** Edits an existing Components V2 message via raw REST. */
 declare function editComponentsMessage(client: RestClient, channelId: string, messageId: string, components: unknown[], options?: SendOptions): Promise<unknown>;
 /**
+ * Sends what preparePayload returned, in whichever format it is, via raw REST.
+ * `options` replaces the payload's own files or allowed mentions where given.
+ * Returns the raw message data.
+ */
+declare function sendPreparedMessage(client: RestClient, channelId: string, prepared: PreparedPayload, options?: SendOptions): Promise<unknown>;
+/** Edits an existing message with what preparePayload returned, via raw REST. */
+declare function editPreparedMessage(client: RestClient, channelId: string, messageId: string, prepared: PreparedPayload, options?: SendOptions): Promise<unknown>;
+/**
  * Mentions the author wrote into the template themselves may ping; text
  * that arrives through a variable (a member's reason, a form answer) never
  * may. So the allow list is read from the template before substitution:
@@ -77,7 +91,8 @@ declare function mentionsInTemplate(rawPayload: unknown): AllowedMentions;
 /**
  * Prepares a stored payload for sending: substitute variables, drop what did
  * not resolve, resolve media. `rawPayload` is the stored JSON (string or
- * object) with a `components` array.
+ * object) with a `components` array, plus `content` and an `embeds` array
+ * for a classic message.
  */
 declare function preparePayload(rawPayload: unknown, vars: Record<string, unknown>, { syntax, media }?: PrepareOptions): PreparedPayload;
 /**
@@ -90,4 +105,4 @@ declare function preparedOrNull(rawPayload: unknown, vars: Record<string, unknow
     label?: string;
 }): PreparedPayload | null;
 
-export { type AllowedMentions, COMPONENTS_V2_FLAG, type MediaResolver, type MessageFile, PERCENT_PLACEHOLDERS, type PlaceholderSyntax, type PrepareOptions, type PreparedPayload, type RestClient, type SendOptions, collectMediaAttachments, editComponentsMessage, mentionsInTemplate, preparePayload, preparedOrNull, sendComponentsMessage, substituteVars, variablePattern };
+export { type AllowedMentions, COMPONENTS_V2_FLAG, type MediaResolver, type MessageFile, PERCENT_PLACEHOLDERS, type PlaceholderSyntax, type PrepareOptions, type PreparedPayload, type RestClient, type SendOptions, collectMediaAttachments, editComponentsMessage, editPreparedMessage, mentionsInTemplate, preparePayload, preparedOrNull, sendComponentsMessage, sendPreparedMessage, substituteVars, variablePattern };

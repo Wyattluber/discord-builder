@@ -1,6 +1,6 @@
 // The bot side of the builder: variable substitution, media resolution (a
 // stored URL becomes attachment://) and the raw REST send and edit of a
-// Components V2 payload.
+// Components V2 payload or a classic one (text, embeds, action rows).
 //
 // Host-free by design: no database, no app-specific variables, no discord.js.
 // Where a payload points at media, the caller passes a resolver (the `media`
@@ -40,6 +40,12 @@ export interface AllowedMentions {
 
 export interface PreparedPayload {
   components: unknown[];
+  /** Classic message: the embeds that are left. Empty for Components V2. */
+  embeds: unknown[];
+  /** Classic message: the text above the embeds, undefined when there is none. */
+  content?: string;
+  /** True for a Components V2 payload; false for a classic one (a stored `embeds` array). */
+  componentsV2: boolean;
   files: MessageFile[];
   allowedMentions: AllowedMentions;
 }
@@ -93,15 +99,18 @@ export function collectMediaAttachments(payload: Json, media?: MediaResolver | n
   if (!media?.match || !media?.load) return files;
   const seen = new Map<string, string>(); // media id -> filename
 
-  const walk = (value: Json) => {
+  // Media sit under `url` (gallery items, thumbnails, files, embed images)
+  // and `icon_url` (embed author and footer). An embed's own `url` and its
+  // author's are links, so those two are left alone.
+  const walk = (value: Json, urlIsLink = false) => {
     if (Array.isArray(value)) {
-      value.forEach(walk);
+      value.forEach((v) => walk(v, urlIsLink));
       return;
     }
     if (!value || typeof value !== 'object') return;
 
     for (const [key, val] of Object.entries(value)) {
-      if (key === 'url' && typeof val === 'string') {
+      if (((key === 'url' && !urlIsLink) || key === 'icon_url') && typeof val === 'string') {
         const match = val.match(media.match);
         if (!match) continue;
         const id = match[1];
@@ -114,7 +123,7 @@ export function collectMediaAttachments(payload: Json, media?: MediaResolver | n
         }
         value[key] = `attachment://${seen.get(id)}`;
       } else {
-        walk(val);
+        walk(val, key === 'embeds' || key === 'author');
       }
     }
   };
@@ -209,6 +218,51 @@ function stripEmptyText(value: Json) {
   }
 }
 
+const blank = (text: unknown) => typeof text !== 'string' || text.trim() === '';
+
+/**
+ * Cleans the embeds of a classic payload after substitution. Discord answers
+ * a field without a name or value, an author without a name, a footer without
+ * text, a broken URL or an embed with nothing in it with a 400 for the whole
+ * message, which an optional variable that came out empty would otherwise
+ * cause. A stored timestamp of "now" becomes the send time. Returns the
+ * embeds that are left.
+ */
+function cleanEmbeds(embeds: Json[], syntax: PlaceholderSyntax = PERCENT_PLACEHOLDERS): Json[] {
+  const dropUrl = (obj: Json, key: string) => {
+    if (obj && key in obj && unresolvedUrl(obj[key], syntax)) delete obj[key];
+  };
+  return embeds.filter((embed: Json) => {
+    if (!embed || typeof embed !== 'object') return false;
+
+    if (Array.isArray(embed.fields)) {
+      embed.fields = embed.fields.filter((f: Json) => !blank(f?.name) && !blank(f?.value));
+      if (embed.fields.length === 0) delete embed.fields;
+    }
+    for (const key of ['image', 'thumbnail']) {
+      if (embed[key] && unresolvedUrl(embed[key].url, syntax)) delete embed[key];
+    }
+    dropUrl(embed, 'url');
+    if (embed.author) {
+      dropUrl(embed.author, 'url');
+      dropUrl(embed.author, 'icon_url');
+      if (blank(embed.author.name)) delete embed.author;
+    }
+    if (embed.footer) {
+      dropUrl(embed.footer, 'icon_url');
+      if (blank(embed.footer.text)) delete embed.footer;
+    }
+    if ('title' in embed && blank(embed.title)) delete embed.title;
+    if ('description' in embed && blank(embed.description)) delete embed.description;
+
+    if (embed.timestamp === 'now') embed.timestamp = new Date().toISOString();
+    else if ('timestamp' in embed && (typeof embed.timestamp !== 'string' || Number.isNaN(Date.parse(embed.timestamp)))) delete embed.timestamp;
+
+    // Color, link and time alone show nothing
+    return ['title', 'description', 'fields', 'image', 'thumbnail', 'author', 'footer'].some((key) => key in embed);
+  });
+}
+
 function restBody(components: unknown[], files: MessageFile[], allowedMentions?: AllowedMentions) {
   const body: Record<string, unknown> = {
     flags: COMPONENTS_V2_FLAG,
@@ -240,6 +294,47 @@ export async function editComponentsMessage(client: RestClient, channelId: strin
 }
 
 /**
+ * The body for a prepared payload: Components V2 with its flag, or a classic
+ * message without it. An edit always writes `content`, so text the old
+ * message had and the new one lacks is cleared instead of kept.
+ */
+function preparedBody(prepared: PreparedPayload, files: MessageFile[], allowedMentions: AllowedMentions | undefined, edit: boolean) {
+  if (prepared.componentsV2) return restBody(prepared.components, files, allowedMentions);
+  const body: Record<string, unknown> = {
+    embeds: prepared.embeds,
+    components: prepared.components,
+    allowed_mentions: allowedMentions ?? { parse: [] },
+  };
+  if (prepared.content !== undefined || edit) body.content = prepared.content ?? '';
+  if (files.length > 0) {
+    body.attachments = files.map((f, i) => ({ id: i, filename: f.name }));
+  }
+  return body;
+}
+
+/**
+ * Sends what preparePayload returned, in whichever format it is, via raw REST.
+ * `options` replaces the payload's own files or allowed mentions where given.
+ * Returns the raw message data.
+ */
+export async function sendPreparedMessage(client: RestClient, channelId: string, prepared: PreparedPayload, options: SendOptions = {}) {
+  const files = options.files ?? prepared.files ?? [];
+  return client.rest.post(`/channels/${channelId}/messages`, {
+    body: preparedBody(prepared, files, options.allowedMentions ?? prepared.allowedMentions, false),
+    files,
+  });
+}
+
+/** Edits an existing message with what preparePayload returned, via raw REST. */
+export async function editPreparedMessage(client: RestClient, channelId: string, messageId: string, prepared: PreparedPayload, options: SendOptions = {}) {
+  const files = options.files ?? prepared.files ?? [];
+  return client.rest.patch(`/channels/${channelId}/messages/${messageId}`, {
+    body: preparedBody(prepared, files, options.allowedMentions ?? prepared.allowedMentions, true),
+    files,
+  });
+}
+
+/**
  * Mentions the author wrote into the template themselves may ping; text
  * that arrives through a variable (a member's reason, a form answer) never
  * may. So the allow list is read from the template before substitution:
@@ -256,17 +351,23 @@ export function mentionsInTemplate(rawPayload: unknown): AllowedMentions {
 /**
  * Prepares a stored payload for sending: substitute variables, drop what did
  * not resolve, resolve media. `rawPayload` is the stored JSON (string or
- * object) with a `components` array.
+ * object) with a `components` array, plus `content` and an `embeds` array
+ * for a classic message.
  */
 export function preparePayload(rawPayload: unknown, vars: Record<string, unknown>, { syntax = PERCENT_PLACEHOLDERS, media = null }: PrepareOptions = {}): PreparedPayload {
   const template = typeof rawPayload === 'string' ? JSON.parse(rawPayload) : rawPayload;
   const payload: Json = substituteVars(template, vars, syntax);
+  const classic = Array.isArray(payload?.embeds);
+  if (classic) payload.embeds = cleanEmbeds(payload.embeds, syntax);
   stripUnresolvedMedia(payload, syntax);
   stripUnresolvedLinks(payload, syntax);
   stripEmptyText(payload);
   const files = collectMediaAttachments(payload, media);
   return {
     components: payload?.components ?? [],
+    embeds: classic ? payload.embeds : [],
+    content: classic && !blank(payload.content) ? payload.content : undefined,
+    componentsV2: !classic,
     files,
     allowedMentions: payload?.allowed_mentions ?? mentionsInTemplate(template),
   };
@@ -282,7 +383,8 @@ export function preparedOrNull(rawPayload: unknown, vars: Record<string, unknown
   if (!rawPayload) return null;
   try {
     const prepared = preparePayload(rawPayload, vars, options);
-    return prepared.components.length > 0 ? prepared : null;
+    const empty = prepared.components.length === 0 && prepared.embeds.length === 0 && prepared.content === undefined;
+    return empty ? null : prepared;
   } catch (err) {
     console.error(`[Builder] Invalid ${options.label} payload, using default:`, (err as Error).message);
     return null;
