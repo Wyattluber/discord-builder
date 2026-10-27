@@ -107,38 +107,45 @@ export function ButtonEditor({ button, onChange, variables }: { button: ButtonNo
   );
 }
 
+// ── accent color: none, the presets, or any color ────────────────
+export function ColorField({ label, value, onChange }: { label: string; value: number | null | undefined; onChange: (v: number | null) => void }) {
+  return (
+    <div className="space-y-1">
+      <FieldLabel>{label}</FieldLabel>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className={`h-6 rounded border px-2 text-[11px] ${value == null ? "border-dbx-accent-500 text-dbx-accent-300" : "border-border/60 text-muted-foreground"}`}
+        >
+          None
+        </button>
+        {ACCENT_PRESETS.map((p) => (
+          <button
+            key={p.value}
+            type="button"
+            title={p.name}
+            onClick={() => onChange(p.value)}
+            className={`h-6 w-6 rounded border ${value === p.value ? "ring-2 ring-white" : "border-black/30"}`}
+            style={{ background: hexOf(p.value) }}
+          />
+        ))}
+        <input
+          type="color"
+          value={hexOf(value) ?? "#9b59b6"}
+          onChange={(e) => onChange(parseInt(e.target.value.slice(1), 16))}
+          className="h-6 w-8 cursor-pointer rounded border border-border/60 bg-transparent"
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── container props (children rendered by the orchestrator) ──────
 export function ContainerProps({ node, onChange }: { node: ContainerNode; onChange: (n: ContainerNode) => void }) {
   return (
     <div className="space-y-2">
-      <div className="space-y-1">
-        <FieldLabel>Accent color</FieldLabel>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => onChange({ ...node, accentColor: null })}
-            className={`h-6 rounded border px-2 text-[11px] ${node.accentColor == null ? "border-dbx-accent-500 text-dbx-accent-300" : "border-border/60 text-muted-foreground"}`}
-          >
-            None
-          </button>
-          {ACCENT_PRESETS.map((p) => (
-            <button
-              key={p.value}
-              type="button"
-              title={p.name}
-              onClick={() => onChange({ ...node, accentColor: p.value })}
-              className={`h-6 w-6 rounded border ${node.accentColor === p.value ? "ring-2 ring-white" : "border-black/30"}`}
-              style={{ background: hexOf(p.value) }}
-            />
-          ))}
-          <input
-            type="color"
-            value={hexOf(node.accentColor) ?? "#9b59b6"}
-            onChange={(e) => onChange({ ...node, accentColor: parseInt(e.target.value.slice(1), 16) })}
-            className="h-6 w-8 cursor-pointer rounded border border-border/60 bg-transparent"
-          />
-        </div>
-      </div>
+      <ColorField label="Accent color" value={node.accentColor} onChange={(accentColor) => onChange({ ...node, accentColor })} />
       <SwitchRow label="Spoiler (blur until clicked)" checked={!!node.spoiler} onChange={(v) => onChange({ ...node, spoiler: v })} />
     </div>
   );

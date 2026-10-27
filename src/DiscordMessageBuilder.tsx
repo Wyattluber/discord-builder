@@ -5,17 +5,21 @@
 //
 // Each block is an expandable card whose body IS its editor. Containers nest
 // their children visually. Reorder within a list by dragging the ⠿ handle.
+// A host that offers classic embeds (`formats`) gets the embed editor
+// (EmbedEditor.tsx) in the same frame, with a switch when it offers both.
 
 import { useMemo, useRef, useState } from "react";
 import { Percent } from "lucide-react";
 import { BlockBody, ContainerProps } from "./BlockBody";
-import type { UploadFileFn, UploadImageFn } from "./fields";
+import { SegmentToggle, type UploadFileFn, type UploadImageFn } from "./fields";
 import { BuilderContext, PaletteContext, SyntaxContext, type BuilderIntegrations, type PaletteApi } from "./context";
 import { PERCENT_PLACEHOLDERS, type PlaceholderSyntax } from "./syntax";
 import { VariablePalette } from "./VariablePalette";
 import { BlockCard, type DragProps, type MoveProps } from "./BlockCard";
 import { AddComponentBar, AddComponentCards, BLOCK_ICONS } from "./AddComponent";
 import { DiscordPreview } from "./DiscordPreview";
+import { EmbedEditor } from "./EmbedEditor";
+import { reorderList, useDragReorder, type DropPos } from "./reorder";
 import { useIsCompact, useVisibleHeight } from "./useCompact";
 import {
   BLOCK_LABELS,
@@ -23,15 +27,37 @@ import {
   CHILD_BLOCK_KINDS,
   LIMITS,
   ROOT_BLOCK_KINDS,
+  emptyEmbedMessage,
   hexOf,
   makeBlock,
   makeChildBlock,
+  messageFormat,
+  startingMessage,
 } from "./constants";
 import { applyVariableSamples, mergeVariables } from "./presets";
-import { countComponents, validate } from "./serialize";
-import type { ContainerChild, ContainerNode, MessageModel, RootNode, TemplateVariable } from "./types";
+import { countComponents, countEmbedChars, isEmptyEmbed, validate } from "./serialize";
+import type { ContainerChild, ContainerNode, MessageFormat, MessageModel, RootNode, TemplateVariable } from "./types";
 
 const ROOT_ZONE = "root";
+
+const FORMAT_OPTIONS: { value: MessageFormat; label: string }[] = [
+  { value: "components", label: "Components" },
+  { value: "embeds", label: "Embed" },
+];
+
+function blankMessage(format: MessageFormat): MessageModel {
+  return format === "embeds" ? emptyEmbedMessage() : startingMessage();
+}
+
+/** Nothing written yet: what a host's starter message looks like before the first edit. */
+function isBlankMessage(model: MessageModel): boolean {
+  if (messageFormat(model) === "embeds") {
+    return !(model.content ?? "").trim() && model.components.length === 0 && (model.embeds ?? []).every(isEmptyEmbed);
+  }
+  const blankNode = (n: RootNode): boolean =>
+    n.type === "text" ? !n.content.trim() : n.type === "container" ? n.children.every(blankNode) : false;
+  return model.components.every(blankNode);
+}
 
 function summarize(node: RootNode): string {
   switch (node.type) {
@@ -52,21 +78,13 @@ function summarize(node: RootNode): string {
   }
 }
 
-function reorderList<T extends { id: string }>(list: T[], fromId: string, toId: string, pos: "before" | "after"): T[] {
-  const from = list.findIndex((x) => x.id === fromId);
-  if (from < 0) return list;
-  const copy = [...list];
-  const [moved] = copy.splice(from, 1);
-  let to = copy.findIndex((x) => x.id === toId);
-  if (to < 0) return list;
-  if (pos === "after") to += 1;
-  copy.splice(to, 0, moved);
-  return copy;
-}
-
 export interface DiscordMessageBuilderProps {
   value: MessageModel;
   onChange: (model: MessageModel) => void;
+  /** What the editor offers: Components V2 blocks, classic embeds, or both
+   *  with a switch. Defaults to components only. A stored message in a
+   *  format left out here still opens, in its own format. */
+  formats?: MessageFormat[];
   variables?: TemplateVariable[];
   /** How a variable is written in a text; defaults to %name%. */
   syntax?: PlaceholderSyntax;
@@ -87,12 +105,31 @@ export interface DiscordMessageBuilderProps {
   className?: string;
 }
 
-type DropPos = "before" | "after";
+const DEFAULT_FORMATS: MessageFormat[] = ["components"];
 
-export function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PLACEHOLDERS, sampleOverrides, onUploadImage, onUploadFile, botName, botAvatar, watermark, integrations, className = "" }: DiscordMessageBuilderProps) {
+export function DiscordMessageBuilder({ value: incoming, onChange, formats = DEFAULT_FORMATS, variables, syntax = PERCENT_PLACEHOLDERS, sampleOverrides, onUploadImage, onUploadFile, botName, botAvatar, watermark, integrations, className = "" }: DiscordMessageBuilderProps) {
+  const offered = formats.length > 0 ? formats : DEFAULT_FORMATS;
+  // A blank starter in a format the host does not offer (a fallback built
+  // with startingMessage on an embeds-only page) opens as an empty message in
+  // the first format it does; anything with content opens as it is. Keyed on
+  // the joined list, so an inline `formats` array does not mint new ids.
+  const value = useMemo(
+    () => (offered.includes(messageFormat(incoming)) || !isBlankMessage(incoming) ? incoming : blankMessage(offered[0])),
+    [incoming, offered.join()],
+  );
+  const format = messageFormat(value);
+  // The other format's message while this editor is open, so switching back
+  // and forth loses nothing; only the active one reaches onChange.
+  const stash = useRef<Partial<Record<MessageFormat, MessageModel>>>({});
+  const switchable = FORMAT_OPTIONS.filter((o) => offered.includes(o.value) || o.value === format || stash.current[o.value]);
+  const switchFormat = (next: MessageFormat) => {
+    if (next === format) return;
+    stash.current[format] = value;
+    onChange(stash.current[next] ?? blankMessage(next));
+  };
+
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [drag, setDrag] = useState<{ zone: string; id: string } | null>(null);
-  const [over, setOver] = useState<{ zone: string; id: string; pos: DropPos } | null>(null);
+  const dragFor = useDragReorder();
   // Single-column layout: editor and preview share the width as tabs.
   const compact = useIsCompact();
   const [pane, setPane] = useState<"editor" | "preview">("editor");
@@ -199,33 +236,7 @@ export function DiscordMessageBuilder({ value, onChange, variables, syntax = PER
   }
 
   function dragPropsFor(zone: string, id: string): DragProps {
-    const active = !!drag && drag.zone === zone && drag.id !== id;
-    return {
-      dragging: drag?.id === id,
-      overPos: over && over.zone === zone && over.id === id ? over.pos : null,
-      onDragStart: (e, cardEl) => {
-        setDrag({ zone, id });
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", id);
-        if (cardEl) e.dataTransfer.setDragImage(cardEl, 20, 16);
-      },
-      // Only show a drop marker while hovering; never reorder mid-drag.
-      onDragOver: (e) => {
-        if (!active) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        const rect = e.currentTarget.getBoundingClientRect();
-        const pos: DropPos = e.clientY - rect.top < rect.height / 2 ? "before" : "after";
-        setOver((prev) => (prev && prev.zone === zone && prev.id === id && prev.pos === pos ? prev : { zone, id, pos }));
-      },
-      onDrop: (e) => {
-        e.preventDefault();
-        if (active && over && over.zone === zone && over.id === id) reorder(zone, drag!.id, id, over.pos);
-        setDrag(null);
-        setOver(null);
-      },
-      onDragEnd: () => { setDrag(null); setOver(null); },
-    };
+    return dragFor(zone, id, (fromId, toId, pos) => reorder(zone, fromId, toId, pos));
   }
 
   // ── render one block (recurses for containers) ─────────────────
@@ -289,7 +300,10 @@ export function DiscordMessageBuilder({ value, onChange, variables, syntax = PER
   const issues = validate(value);
   const errors = issues.filter((i) => i.level === "error");
   const warnings = issues.filter((i) => i.level === "warning");
-  const total = countComponents(value.components);
+  // What the header counts: components against 40, or embed text against 6000
+  const usage = format === "embeds"
+    ? { used: countEmbedChars(value.embeds ?? []), max: LIMITS.embedTotalChars, unit: "characters" }
+    : { used: countComponents(value.components), max: LIMITS.totalComponents, unit: "components" };
 
   // Below `lg` both panes claim the full width, so only one is shown at a time.
   const showEditor = !compact || pane === "editor";
@@ -332,16 +346,27 @@ export function DiscordMessageBuilder({ value, onChange, variables, syntax = PER
         {compact && paletteOpen && (
           <VariablePalette variables={allVariables} onClose={() => setPaletteOpen(false)} />
         )}
-        {/* One panel, blocks as rows. Rows are the list; the panel is the frame. */}
-        <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60 bg-card">
-          {value.components.map((node) => renderBlock(node, ROOT_ZONE))}
-          {value.components.length === 0 && (
-            <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-              No blocks yet. Add one below.
-            </p>
-          )}
-        </div>
-        <AddComponentCards kinds={ROOT_BLOCK_KINDS} onAdd={addRoot} />
+        {switchable.length > 1 && (
+          <div className="w-fit">
+            <SegmentToggle options={switchable} value={format} onChange={switchFormat} />
+          </div>
+        )}
+        {format === "embeds" ? (
+          <EmbedEditor model={value} onChange={onChange} variables={allVariables} onUploadImage={onUploadImage} compact={compact} />
+        ) : (
+          <>
+            {/* One panel, blocks as rows. Rows are the list; the panel is the frame. */}
+            <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60 bg-card">
+              {value.components.map((node) => renderBlock(node, ROOT_ZONE))}
+              {value.components.length === 0 && (
+                <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+                  No blocks yet. Add one below.
+                </p>
+              )}
+            </div>
+            <AddComponentCards kinds={ROOT_BLOCK_KINDS} onAdd={addRoot} />
+          </>
+        )}
       </div>
 
       <div
@@ -360,8 +385,8 @@ export function DiscordMessageBuilder({ value, onChange, variables, syntax = PER
                 <Percent className="h-3 w-3" /> Variables
               </button>
             )}
-            <span className={total > LIMITS.totalComponents ? "text-red-400" : ""}>
-              {total} / {LIMITS.totalComponents} components
+            <span className={usage.used > usage.max ? "text-red-400" : ""}>
+              {usage.used} / {usage.max} {usage.unit}
             </span>
           </span>
         </div>

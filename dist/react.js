@@ -19,6 +19,7 @@ import {
   emptyMessage,
   hexOf,
   isEmptyEmbed,
+  makeActionRow,
   makeBlock,
   makeButton,
   makeChildBlock,
@@ -39,7 +40,7 @@ import {
 } from "./chunk-CMSDHKDR.js";
 
 // src/DiscordMessageBuilder.tsx
-import { useMemo, useRef as useRef5, useState as useState5 } from "react";
+import { useMemo, useRef as useRef5, useState as useState7 } from "react";
 import { Percent as Percent2 } from "lucide-react";
 
 // src/BlockBody.tsx
@@ -1240,42 +1241,45 @@ function ButtonEditor({ button, onChange, variables }) {
     /* @__PURE__ */ jsx6(SwitchRow, { label: "Disabled", checked: !!button.disabled, onChange: (v) => set({ disabled: v }) })
   ] });
 }
+function ColorField({ label, value, onChange }) {
+  return /* @__PURE__ */ jsxs6("div", { className: "space-y-1", children: [
+    /* @__PURE__ */ jsx6(FieldLabel, { children: label }),
+    /* @__PURE__ */ jsxs6("div", { className: "flex flex-wrap items-center gap-1.5", children: [
+      /* @__PURE__ */ jsx6(
+        "button",
+        {
+          type: "button",
+          onClick: () => onChange(null),
+          className: `h-6 rounded border px-2 text-[11px] ${value == null ? "border-dbx-accent-500 text-dbx-accent-300" : "border-border/60 text-muted-foreground"}`,
+          children: "None"
+        }
+      ),
+      ACCENT_PRESETS.map((p) => /* @__PURE__ */ jsx6(
+        "button",
+        {
+          type: "button",
+          title: p.name,
+          onClick: () => onChange(p.value),
+          className: `h-6 w-6 rounded border ${value === p.value ? "ring-2 ring-white" : "border-black/30"}`,
+          style: { background: hexOf(p.value) }
+        },
+        p.value
+      )),
+      /* @__PURE__ */ jsx6(
+        "input",
+        {
+          type: "color",
+          value: hexOf(value) ?? "#9b59b6",
+          onChange: (e) => onChange(parseInt(e.target.value.slice(1), 16)),
+          className: "h-6 w-8 cursor-pointer rounded border border-border/60 bg-transparent"
+        }
+      )
+    ] })
+  ] });
+}
 function ContainerProps({ node, onChange }) {
   return /* @__PURE__ */ jsxs6("div", { className: "space-y-2", children: [
-    /* @__PURE__ */ jsxs6("div", { className: "space-y-1", children: [
-      /* @__PURE__ */ jsx6(FieldLabel, { children: "Accent color" }),
-      /* @__PURE__ */ jsxs6("div", { className: "flex flex-wrap items-center gap-1.5", children: [
-        /* @__PURE__ */ jsx6(
-          "button",
-          {
-            type: "button",
-            onClick: () => onChange({ ...node, accentColor: null }),
-            className: `h-6 rounded border px-2 text-[11px] ${node.accentColor == null ? "border-dbx-accent-500 text-dbx-accent-300" : "border-border/60 text-muted-foreground"}`,
-            children: "None"
-          }
-        ),
-        ACCENT_PRESETS.map((p) => /* @__PURE__ */ jsx6(
-          "button",
-          {
-            type: "button",
-            title: p.name,
-            onClick: () => onChange({ ...node, accentColor: p.value }),
-            className: `h-6 w-6 rounded border ${node.accentColor === p.value ? "ring-2 ring-white" : "border-black/30"}`,
-            style: { background: hexOf(p.value) }
-          },
-          p.value
-        )),
-        /* @__PURE__ */ jsx6(
-          "input",
-          {
-            type: "color",
-            value: hexOf(node.accentColor) ?? "#9b59b6",
-            onChange: (e) => onChange({ ...node, accentColor: parseInt(e.target.value.slice(1), 16) }),
-            className: "h-6 w-8 cursor-pointer rounded border border-border/60 bg-transparent"
-          }
-        )
-      ] })
-    ] }),
+    /* @__PURE__ */ jsx6(ColorField, { label: "Accent color", value: node.accentColor, onChange: (accentColor) => onChange({ ...node, accentColor }) }),
     /* @__PURE__ */ jsx6(SwitchRow, { label: "Spoiler (blur until clicked)", checked: !!node.spoiler, onChange: (v) => onChange({ ...node, spoiler: v }) })
   ] });
 }
@@ -1483,7 +1487,7 @@ import { useRef as useRef4 } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Trash2 as Trash23 } from "lucide-react";
 import { Fragment as Fragment4, jsx as jsx8, jsxs as jsxs8 } from "react/jsx-runtime";
 function BlockCard({
-  icon: Icon,
+  icon: Icon2,
   title,
   summary,
   accentDot,
@@ -1544,7 +1548,7 @@ function BlockCard({
               "aria-label": collapsed ? "Expand" : "Collapse",
               children: [
                 /* @__PURE__ */ jsx8(ChevronDown, { className: `h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${collapsed ? "-rotate-90" : ""}` }),
-                /* @__PURE__ */ jsx8(Icon, { className: "h-4 w-4 shrink-0 text-dbx-accent-400" }),
+                /* @__PURE__ */ jsx8(Icon2, { className: "h-4 w-4 shrink-0 text-dbx-accent-400" }),
                 /* @__PURE__ */ jsx8("span", { className: "truncate text-sm font-medium", children: title }),
                 accentDot && /* @__PURE__ */ jsx8("span", { className: "h-2.5 w-2.5 shrink-0 rounded-full", style: { background: accentDot } }),
                 summary && collapsed && /* @__PURE__ */ jsx8("span", { className: "truncate text-xs text-muted-foreground", children: summary })
@@ -1584,35 +1588,37 @@ var BLOCK_ICONS = {
   file: Paperclip2,
   action_row: MousePointerClick
 };
-function AddComponentCards({ kinds, onAdd }) {
+function AddPill({ icon: Icon2, label, title, onClick }) {
+  return /* @__PURE__ */ jsxs9(
+    "button",
+    {
+      type: "button",
+      onClick,
+      title,
+      className: "flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-dbx-accent-500/60 hover:bg-dbx-accent-500/10 hover:text-foreground",
+      children: [
+        /* @__PURE__ */ jsx9(Icon2, { className: "h-3.5 w-3.5 text-dbx-accent-400" }),
+        label
+      ]
+    }
+  );
+}
+function AddRow({ children }) {
   return /* @__PURE__ */ jsxs9("div", { className: "flex flex-wrap items-center gap-1.5", children: [
     /* @__PURE__ */ jsxs9("span", { className: "mr-1 flex items-center text-xs text-muted-foreground", children: [
       /* @__PURE__ */ jsx9(Plus2, { className: "mr-1 h-3.5 w-3.5" }),
       " Add"
     ] }),
-    kinds.map((k) => {
-      const Icon = BLOCK_ICONS[k];
-      return /* @__PURE__ */ jsxs9(
-        "button",
-        {
-          type: "button",
-          onClick: () => onAdd(k),
-          title: BLOCK_DESCRIPTIONS[k],
-          className: "flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-dbx-accent-500/60 hover:bg-dbx-accent-500/10 hover:text-foreground",
-          children: [
-            /* @__PURE__ */ jsx9(Icon, { className: "h-3.5 w-3.5 text-dbx-accent-400" }),
-            BLOCK_LABELS[k]
-          ]
-        },
-        k
-      );
-    })
+    children
   ] });
+}
+function AddComponentCards({ kinds, onAdd }) {
+  return /* @__PURE__ */ jsx9(AddRow, { children: kinds.map((k) => /* @__PURE__ */ jsx9(AddPill, { icon: BLOCK_ICONS[k], label: BLOCK_LABELS[k], title: BLOCK_DESCRIPTIONS[k], onClick: () => onAdd(k) }, k)) });
 }
 function AddComponentBar({ kinds, onAdd }) {
   return /* @__PURE__ */ jsxs9("div", { className: "flex flex-wrap gap-1.5", children: [
     kinds.map((k) => {
-      const Icon = BLOCK_ICONS[k];
+      const Icon2 = BLOCK_ICONS[k];
       return /* @__PURE__ */ jsxs9(
         "button",
         {
@@ -1620,7 +1626,7 @@ function AddComponentBar({ kinds, onAdd }) {
           onClick: () => onAdd(k),
           className: "flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-dbx-accent-500/60 hover:text-foreground",
           children: [
-            /* @__PURE__ */ jsx9(Icon, { className: "h-3.5 w-3.5" }),
+            /* @__PURE__ */ jsx9(Icon2, { className: "h-3.5 w-3.5" }),
             BLOCK_LABELS[k]
           ]
         },
@@ -1935,9 +1941,76 @@ function Root({ node, vars, footnote }) {
     footnote && /* @__PURE__ */ jsx11("div", { className: "text-xs text-[#949ba4]", children: renderInline(footnote.replace(/^-# /, ""), vars, "fn") })
   ] });
 }
+var isHttp = (url) => /^https?:\/\//.test(url);
+function fieldRows(fields) {
+  const rows = [];
+  for (const f of fields) {
+    const last = rows[rows.length - 1];
+    if (f.inline && last && last.length < 3 && last[0].inline) last.push(f);
+    else rows.push([f]);
+  }
+  return rows;
+}
+function Icon({ url, size }) {
+  return isHttp(url) ? /* @__PURE__ */ jsx11("img", { src: url, alt: "", className: `${size} shrink-0 rounded-full object-cover` }) : /* @__PURE__ */ jsx11("span", { className: `${size} shrink-0 rounded-full bg-black/30` });
+}
+function Embed({ embed: e, vars }) {
+  const mentions = useContext2(MentionsCtx);
+  const titleUrl = resolveUrl(e.url, vars);
+  const authorUrl = resolveUrl(e.author.url, vars);
+  const image = resolveUrl(e.imageUrl, vars);
+  const thumb = resolveUrl(e.thumbnailUrl, vars);
+  const fields = e.fields.filter((f) => f.name.trim() || f.value.trim());
+  const footer = e.footer.text.trim();
+  const authorName = /* @__PURE__ */ jsx11(Fragment5, { children: renderInline(e.author.name, vars, `au${e.id}`, mentions) });
+  const title = /* @__PURE__ */ jsx11(Fragment5, { children: renderInline(e.title, vars, `ti${e.id}`, mentions) });
+  return /* @__PURE__ */ jsxs11("div", { className: "flex max-w-[520px] overflow-hidden rounded-[4px] bg-[#2b2d31]", children: [
+    /* @__PURE__ */ jsx11("div", { className: "w-1 shrink-0", style: { background: hex(e.color) ?? "#1e1f22" } }),
+    /* @__PURE__ */ jsxs11("div", { className: "min-w-0 flex-1 px-3 pb-3 pt-2", children: [
+      /* @__PURE__ */ jsxs11("div", { className: "flex items-start gap-3", children: [
+        /* @__PURE__ */ jsxs11("div", { className: "min-w-0 flex-1 space-y-1.5 break-words", children: [
+          e.author.name.trim() && /* @__PURE__ */ jsxs11("div", { className: "flex items-center gap-2 text-[13px] font-semibold text-white", children: [
+            e.author.iconUrl.trim() && /* @__PURE__ */ jsx11(Icon, { url: resolveUrl(e.author.iconUrl, vars), size: "h-6 w-6" }),
+            isHttp(authorUrl) ? /* @__PURE__ */ jsx11("a", { href: authorUrl, target: "_blank", rel: "noreferrer", className: "hover:underline", children: authorName }) : /* @__PURE__ */ jsx11("span", { children: authorName })
+          ] }),
+          e.title.trim() && (e.url.trim() ? isHttp(titleUrl) ? /* @__PURE__ */ jsx11("a", { href: titleUrl, target: "_blank", rel: "noreferrer", className: "block text-sm font-semibold text-[#00a8fc] hover:underline", children: title }) : /* @__PURE__ */ jsx11("div", { className: "text-sm font-semibold text-[#00a8fc]", children: title }) : /* @__PURE__ */ jsx11("div", { className: "text-sm font-semibold text-white", children: title })),
+          e.description.trim() && /* @__PURE__ */ jsx11("div", { className: "text-[13px] text-[#dbdee1]", children: /* @__PURE__ */ jsx11(Markdown, { text: e.description, vars, mentions }) }),
+          fields.length > 0 && /* @__PURE__ */ jsx11("div", { className: "space-y-2 pt-0.5", children: fieldRows(fields).map((row) => /* @__PURE__ */ jsx11("div", { className: "grid gap-3", style: { gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }, children: row.map((f) => /* @__PURE__ */ jsxs11("div", { className: "min-w-0 text-[13px]", children: [
+            /* @__PURE__ */ jsx11("div", { className: "font-semibold text-white", children: renderInline(f.name, vars, `fn${f.id}`, mentions) }),
+            /* @__PURE__ */ jsx11("div", { className: "text-[#dbdee1]", children: /* @__PURE__ */ jsx11(Markdown, { text: f.value, vars, mentions }) })
+          ] }, f.id)) }, row[0].id)) })
+        ] }),
+        e.thumbnailUrl.trim() && (isHttp(thumb) ? /* @__PURE__ */ jsx11("img", { src: thumb, alt: "", className: "h-20 w-20 shrink-0 rounded object-cover" }) : /* @__PURE__ */ jsx11("div", { className: "flex h-20 w-20 shrink-0 items-center justify-center rounded bg-black/30 text-[10px] text-muted-foreground", children: "thumb" }))
+      ] }),
+      e.imageUrl.trim() && (isHttp(image) ? /* @__PURE__ */ jsx11("img", { src: image, alt: "", className: "mt-3 max-h-72 max-w-full rounded object-contain" }) : /* @__PURE__ */ jsx11("div", { className: "mt-3 flex h-24 items-center justify-center rounded bg-black/30 text-xs text-muted-foreground", children: "image" })),
+      (footer || e.timestamp) && /* @__PURE__ */ jsxs11("div", { className: "mt-2 flex items-center gap-2 text-[11px] font-medium text-[#dbdee1]", children: [
+        footer && e.footer.iconUrl.trim() && /* @__PURE__ */ jsx11(Icon, { url: resolveUrl(e.footer.iconUrl, vars), size: "h-5 w-5" }),
+        /* @__PURE__ */ jsxs11("span", { className: "min-w-0 break-words", children: [
+          footer && renderInline(e.footer.text, vars, `ft${e.id}`, mentions),
+          footer && e.timestamp && /* @__PURE__ */ jsx11("span", { className: "mx-1", children: "\u2022" }),
+          e.timestamp && `Today at ${(/* @__PURE__ */ new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+        ] })
+      ] }),
+      isEmptyEmbed(e) && !e.timestamp && /* @__PURE__ */ jsx11("div", { className: "text-xs text-muted-foreground", children: "Empty embed" })
+    ] })
+  ] });
+}
+function EmbedMessage({ model, vars, footnote }) {
+  const mentions = useContext2(MentionsCtx);
+  const content = model.content ?? "";
+  const embeds = model.embeds ?? [];
+  const rows = model.components.filter((n) => n.type === "action_row");
+  return /* @__PURE__ */ jsxs11("div", { className: "space-y-2", children: [
+    !content.trim() && embeds.length === 0 && rows.length === 0 && /* @__PURE__ */ jsx11("div", { className: "text-sm text-muted-foreground", children: "Empty message" }),
+    content.trim() && /* @__PURE__ */ jsx11("div", { className: "text-sm text-[#dbdee1]", children: /* @__PURE__ */ jsx11(Markdown, { text: content, vars, mentions }) }),
+    embeds.map((e) => /* @__PURE__ */ jsx11(Embed, { embed: e, vars }, e.id)),
+    rows.map((row) => /* @__PURE__ */ jsx11(Child, { node: row, vars }, row.id)),
+    footnote && /* @__PURE__ */ jsx11("div", { className: "text-xs text-[#949ba4]", children: renderInline(footnote.replace(/^-# /, ""), vars, "fn") })
+  ] });
+}
 function MessageComponents({ model, variables, mentions, syntax = PERCENT_PLACEHOLDERS }) {
   const vars = previewVars(variables, syntax);
-  return /* @__PURE__ */ jsx11(MentionsCtx.Provider, { value: mentions, children: /* @__PURE__ */ jsx11("div", { className: "space-y-2", children: model.components.map((node) => /* @__PURE__ */ jsx11(Root, { node, vars }, node.id)) }) });
+  return /* @__PURE__ */ jsx11(MentionsCtx.Provider, { value: mentions, children: messageFormat(model) === "embeds" ? /* @__PURE__ */ jsx11(EmbedMessage, { model, vars }) : /* @__PURE__ */ jsx11("div", { className: "space-y-2", children: model.components.map((node) => /* @__PURE__ */ jsx11(Root, { node, vars }, node.id)) }) });
 }
 function DiscordPreview({
   model,
@@ -1958,7 +2031,7 @@ function DiscordPreview({
         /* @__PURE__ */ jsx11("span", { className: "rounded bg-[#5865f2] px-1 text-[10px] font-semibold text-white", children: "APP" }),
         /* @__PURE__ */ jsx11("span", { className: "text-xs text-muted-foreground", children: "Today" })
       ] }),
-      /* @__PURE__ */ jsxs11("div", { className: "space-y-2", children: [
+      messageFormat(model) === "embeds" ? /* @__PURE__ */ jsx11(EmbedMessage, { model, vars, footnote: watermark }) : /* @__PURE__ */ jsxs11("div", { className: "space-y-2", children: [
         model.components.length === 0 ? /* @__PURE__ */ jsx11("div", { className: "text-sm text-muted-foreground", children: "Empty message" }) : model.components.map((node, i) => /* @__PURE__ */ jsx11(
           Root,
           {
@@ -1974,10 +2047,259 @@ function DiscordPreview({
   ] }) }) });
 }
 
+// src/EmbedEditor.tsx
+import { useState as useState5 } from "react";
+import { PanelLeft, Plus as Plus3, TextCursorInput } from "lucide-react";
+
+// src/reorder.ts
+import { useState as useState4 } from "react";
+function reorderList(list, fromId, toId, pos) {
+  const from = list.findIndex((x) => x.id === fromId);
+  if (from < 0) return list;
+  const copy = [...list];
+  const [moved] = copy.splice(from, 1);
+  let to = copy.findIndex((x) => x.id === toId);
+  if (to < 0) return list;
+  if (pos === "after") to += 1;
+  copy.splice(to, 0, moved);
+  return copy;
+}
+function movePropsIn(list, id, apply) {
+  const i = list.findIndex((x) => x.id === id);
+  const shift = (dir) => {
+    const to = i + dir;
+    if (i < 0 || to < 0 || to >= list.length) return;
+    const copy = [...list];
+    [copy[i], copy[to]] = [copy[to], copy[i]];
+    apply(copy);
+  };
+  return { canUp: i > 0, canDown: i >= 0 && i < list.length - 1, up: () => shift(-1), down: () => shift(1) };
+}
+function useDragReorder() {
+  const [drag, setDrag] = useState4(null);
+  const [over, setOver] = useState4(null);
+  return function dragPropsFor(zone, id, onReorder) {
+    const active = !!drag && drag.zone === zone && drag.id !== id;
+    return {
+      dragging: drag?.id === id,
+      overPos: over && over.zone === zone && over.id === id ? over.pos : null,
+      onDragStart: (e, cardEl) => {
+        setDrag({ zone, id });
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", id);
+        if (cardEl) e.dataTransfer.setDragImage(cardEl, 20, 16);
+      },
+      // Only show a drop marker while hovering; never reorder mid-drag.
+      onDragOver: (e) => {
+        if (!active) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        const rect = e.currentTarget.getBoundingClientRect();
+        const pos = e.clientY - rect.top < rect.height / 2 ? "before" : "after";
+        setOver((prev) => prev && prev.zone === zone && prev.id === id && prev.pos === pos ? prev : { zone, id, pos });
+      },
+      onDrop: (e) => {
+        e.preventDefault();
+        if (active && over && over.zone === zone && over.id === id) onReorder(drag.id, id, over.pos);
+        setDrag(null);
+        setOver(null);
+      },
+      onDragEnd: () => {
+        setDrag(null);
+        setOver(null);
+      }
+    };
+  };
+}
+
+// src/EmbedEditor.tsx
+import { jsx as jsx12, jsxs as jsxs12 } from "react/jsx-runtime";
+var EMBEDS_ZONE = "embeds";
+var ROWS_ZONE = "rows";
+function summarizeEmbed(e) {
+  const line = (e.title || e.description.split("\n")[0] || e.author.name || e.footer.text).slice(0, 40);
+  return line || (e.imageUrl || e.thumbnailUrl ? "image" : "(empty)");
+}
+function Group({ title, children }) {
+  return /* @__PURE__ */ jsxs12("div", { className: "space-y-2 rounded-md border border-border/60 bg-muted/20 p-2", children: [
+    /* @__PURE__ */ jsx12(FieldLabel, { children: title }),
+    children
+  ] });
+}
+function FieldBody({ field, onChange, variables }) {
+  const set = (patch) => onChange({ ...field, ...patch });
+  return /* @__PURE__ */ jsxs12("div", { className: "space-y-2", children: [
+    /* @__PURE__ */ jsx12(TextField, { label: "Name", value: field.name, onChange: (name) => set({ name }), max: LIMITS.embedFieldNameChars }),
+    /* @__PURE__ */ jsx12(MarkdownField, { label: "Value", value: field.value, onChange: (value) => set({ value }), variables, rows: 2, max: LIMITS.embedFieldValueChars }),
+    /* @__PURE__ */ jsx12(SwitchRow, { label: "Inline (side by side)", checked: field.inline, onChange: (inline) => set({ inline }) })
+  ] });
+}
+function EmbedBody({
+  embed,
+  onChange,
+  variables,
+  onUpload,
+  compact,
+  dragFor,
+  collapsed,
+  toggle
+}) {
+  const set = (patch) => onChange({ ...embed, ...patch });
+  const setFields = (fields) => set({ fields });
+  const zone = `fields:${embed.id}`;
+  const fieldDrag = (id) => dragFor(zone, id, (fromId, toId, pos) => setFields(reorderList(embed.fields, fromId, toId, pos)));
+  return /* @__PURE__ */ jsxs12("div", { className: "space-y-3", children: [
+    /* @__PURE__ */ jsx12(ColorField, { label: "Color", value: embed.color, onChange: (color) => set({ color }) }),
+    /* @__PURE__ */ jsxs12(Group, { title: "Author", children: [
+      /* @__PURE__ */ jsxs12("div", { className: "grid grid-cols-1 gap-2 sm:grid-cols-2", children: [
+        /* @__PURE__ */ jsx12(TextField, { label: "Name", value: embed.author.name, onChange: (name) => set({ author: { ...embed.author, name } }), max: LIMITS.embedAuthorNameChars }),
+        /* @__PURE__ */ jsx12(TextField, { label: "Link", value: embed.author.url, onChange: (url) => set({ author: { ...embed.author, url } }), placeholder: "https://example.com" })
+      ] }),
+      /* @__PURE__ */ jsx12(ImageField, { label: "Icon", value: embed.author.iconUrl, onUpload, onChange: (iconUrl) => set({ author: { ...embed.author, iconUrl } }) })
+    ] }),
+    /* @__PURE__ */ jsxs12("div", { className: "grid grid-cols-1 gap-2 sm:grid-cols-2", children: [
+      /* @__PURE__ */ jsx12(TextField, { label: "Title", value: embed.title, onChange: (title) => set({ title }), max: LIMITS.embedTitleChars }),
+      /* @__PURE__ */ jsx12(TextField, { label: "Title link", value: embed.url, onChange: (url) => set({ url }), placeholder: "https://example.com" })
+    ] }),
+    /* @__PURE__ */ jsx12(MarkdownField, { label: "Description", value: embed.description, onChange: (description) => set({ description }), variables, rows: 4, max: LIMITS.embedDescriptionChars }),
+    /* @__PURE__ */ jsxs12("div", { className: "space-y-1.5", children: [
+      /* @__PURE__ */ jsxs12(FieldLabel, { children: [
+        "Fields ",
+        /* @__PURE__ */ jsxs12("span", { className: "ml-1 font-normal normal-case text-muted-foreground/60", children: [
+          "\xB7 ",
+          embed.fields.length,
+          "/",
+          LIMITS.embedFields
+        ] })
+      ] }),
+      embed.fields.length > 0 && /* @__PURE__ */ jsx12("div", { className: "divide-y divide-border/40 rounded-md border border-border/50", children: embed.fields.map((f) => /* @__PURE__ */ jsx12(
+        BlockCard,
+        {
+          icon: TextCursorInput,
+          title: "Field",
+          summary: f.name.slice(0, 40) || "(empty)",
+          collapsed: collapsed.has(f.id),
+          onToggle: () => toggle(f.id),
+          onDelete: () => setFields(embed.fields.filter((x) => x.id !== f.id)),
+          drag: fieldDrag(f.id),
+          move: movePropsIn(embed.fields, f.id, setFields),
+          compact,
+          children: /* @__PURE__ */ jsx12(FieldBody, { field: f, variables, onChange: (next) => setFields(embed.fields.map((x) => x.id === f.id ? next : x)) })
+        },
+        f.id
+      )) }),
+      embed.fields.length < LIMITS.embedFields && /* @__PURE__ */ jsxs12(Button, { variant: "outline", size: "sm", onClick: () => setFields([...embed.fields, makeEmbedField()]), children: [
+        /* @__PURE__ */ jsx12(Plus3, { className: "mr-1 h-3 w-3" }),
+        " Add field"
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxs12("div", { className: "grid grid-cols-1 gap-2 sm:grid-cols-2", children: [
+      /* @__PURE__ */ jsx12(ImageField, { label: "Image", value: embed.imageUrl, onUpload, onChange: (imageUrl) => set({ imageUrl }) }),
+      /* @__PURE__ */ jsx12(ImageField, { label: "Thumbnail", value: embed.thumbnailUrl, onUpload, onChange: (thumbnailUrl) => set({ thumbnailUrl }) })
+    ] }),
+    /* @__PURE__ */ jsxs12(Group, { title: "Footer", children: [
+      /* @__PURE__ */ jsx12(TextField, { label: "Text", value: embed.footer.text, onChange: (text) => set({ footer: { ...embed.footer, text } }), max: LIMITS.embedFooterChars }),
+      /* @__PURE__ */ jsx12(ImageField, { label: "Icon", value: embed.footer.iconUrl, onUpload, onChange: (iconUrl) => set({ footer: { ...embed.footer, iconUrl } }) })
+    ] }),
+    /* @__PURE__ */ jsx12(SwitchRow, { label: "Show the time it was sent", checked: embed.timestamp, onChange: (timestamp) => set({ timestamp }) })
+  ] });
+}
+function EmbedEditor({
+  model,
+  onChange,
+  variables,
+  onUploadImage,
+  compact
+}) {
+  const [collapsed, setCollapsed] = useState5(/* @__PURE__ */ new Set());
+  const dragFor = useDragReorder();
+  const content = model.content ?? "";
+  const embeds = model.embeds ?? [];
+  const rows = model.components.filter((n) => n.type === "action_row");
+  const emit = (patch) => onChange({ format: "embeds", content: patch.content ?? content, embeds: patch.embeds ?? embeds, components: patch.rows ?? rows });
+  const setEmbeds = (next) => emit({ embeds: next });
+  const setRows = (next) => emit({ rows: next });
+  const toggle = (id) => setCollapsed((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+  const canAddEmbed = embeds.length < LIMITS.embeds;
+  const canAddRow = rows.length < LIMITS.actionRows;
+  return /* @__PURE__ */ jsxs12("div", { className: "space-y-3", children: [
+    /* @__PURE__ */ jsx12("div", { className: "rounded-lg border border-border/60 bg-card px-3 py-2.5", children: /* @__PURE__ */ jsx12(
+      MarkdownField,
+      {
+        label: "Message text",
+        value: content,
+        onChange: (c) => emit({ content: c }),
+        variables,
+        rows: 2,
+        max: LIMITS.contentChars,
+        placeholder: "Shown above the embeds"
+      }
+    ) }),
+    /* @__PURE__ */ jsxs12("div", { className: "divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60 bg-card", children: [
+      embeds.map((e) => /* @__PURE__ */ jsx12(
+        BlockCard,
+        {
+          icon: PanelLeft,
+          title: "Embed",
+          summary: summarizeEmbed(e),
+          accentDot: hexOf(e.color),
+          accentBorder: hexOf(e.color),
+          collapsed: collapsed.has(e.id),
+          onToggle: () => toggle(e.id),
+          onDelete: () => setEmbeds(embeds.filter((x) => x.id !== e.id)),
+          drag: dragFor(EMBEDS_ZONE, e.id, (fromId, toId, pos) => setEmbeds(reorderList(embeds, fromId, toId, pos))),
+          move: movePropsIn(embeds, e.id, setEmbeds),
+          compact,
+          children: /* @__PURE__ */ jsx12(
+            EmbedBody,
+            {
+              embed: e,
+              onChange: (next) => setEmbeds(embeds.map((x) => x.id === e.id ? next : x)),
+              variables,
+              onUpload: onUploadImage,
+              compact,
+              dragFor,
+              collapsed,
+              toggle
+            }
+          )
+        },
+        e.id
+      )),
+      rows.map((row) => /* @__PURE__ */ jsx12(
+        BlockCard,
+        {
+          icon: BLOCK_ICONS.action_row,
+          title: BLOCK_LABELS.action_row,
+          summary: `${row.buttons.length} button${row.buttons.length !== 1 ? "s" : ""}`,
+          collapsed: collapsed.has(row.id),
+          onToggle: () => toggle(row.id),
+          onDelete: () => setRows(rows.filter((x) => x.id !== row.id)),
+          drag: dragFor(ROWS_ZONE, row.id, (fromId, toId, pos) => setRows(reorderList(rows, fromId, toId, pos))),
+          move: movePropsIn(rows, row.id, setRows),
+          compact,
+          children: /* @__PURE__ */ jsx12(BlockBody, { node: row, variables, onChange: (next) => setRows(rows.map((x) => x.id === row.id ? next : x)) })
+        },
+        row.id
+      )),
+      embeds.length === 0 && rows.length === 0 && /* @__PURE__ */ jsx12("p", { className: "px-4 py-6 text-center text-sm text-muted-foreground", children: "No embeds yet. Add one below." })
+    ] }),
+    (canAddEmbed || canAddRow) && /* @__PURE__ */ jsxs12(AddRow, { children: [
+      canAddEmbed && /* @__PURE__ */ jsx12(AddPill, { icon: PanelLeft, label: "Embed", title: "A box with a color bar, text, fields and images.", onClick: () => setEmbeds([...embeds, makeEmbed()]) }),
+      canAddRow && /* @__PURE__ */ jsx12(AddPill, { icon: BLOCK_ICONS.action_row, label: BLOCK_LABELS.action_row, title: BLOCK_DESCRIPTIONS.action_row, onClick: () => setRows([...rows, makeActionRow()]) })
+    ] })
+  ] });
+}
+
 // src/useCompact.ts
-import { useEffect as useEffect5, useState as useState4 } from "react";
+import { useEffect as useEffect5, useState as useState6 } from "react";
 function useMediaQuery(query) {
-  const [matches, setMatches] = useState4(
+  const [matches, setMatches] = useState6(
     () => typeof window === "undefined" ? false : window.matchMedia(query).matches
   );
   useEffect5(() => {
@@ -2000,7 +2322,7 @@ function scrollParent(el) {
   return null;
 }
 function useVisibleHeight(ref, enabled, inset = 32) {
-  const [height, setHeight] = useState4(null);
+  const [height, setHeight] = useState6(null);
   useEffect5(() => {
     const el = ref.current;
     if (!enabled || !el) {
@@ -2022,8 +2344,22 @@ function useVisibleHeight(ref, enabled, inset = 32) {
 }
 
 // src/DiscordMessageBuilder.tsx
-import { jsx as jsx12, jsxs as jsxs12 } from "react/jsx-runtime";
+import { Fragment as Fragment6, jsx as jsx13, jsxs as jsxs13 } from "react/jsx-runtime";
 var ROOT_ZONE = "root";
+var FORMAT_OPTIONS = [
+  { value: "components", label: "Components" },
+  { value: "embeds", label: "Embed" }
+];
+function blankMessage(format) {
+  return format === "embeds" ? emptyEmbedMessage() : startingMessage();
+}
+function isBlankMessage(model) {
+  if (messageFormat(model) === "embeds") {
+    return !(model.content ?? "").trim() && model.components.length === 0 && (model.embeds ?? []).every(isEmptyEmbed);
+  }
+  const blankNode = (n) => n.type === "text" ? !n.content.trim() : n.type === "container" ? n.children.every(blankNode) : false;
+  return model.components.every(blankNode);
+}
 function summarize(node) {
   switch (node.type) {
     case "container":
@@ -2042,24 +2378,26 @@ function summarize(node) {
       return node.url.replace(/^attachment:\/\//, "") || "file";
   }
 }
-function reorderList(list, fromId, toId, pos) {
-  const from = list.findIndex((x) => x.id === fromId);
-  if (from < 0) return list;
-  const copy = [...list];
-  const [moved] = copy.splice(from, 1);
-  let to = copy.findIndex((x) => x.id === toId);
-  if (to < 0) return list;
-  if (pos === "after") to += 1;
-  copy.splice(to, 0, moved);
-  return copy;
-}
-function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PLACEHOLDERS, sampleOverrides, onUploadImage, onUploadFile, botName, botAvatar, watermark, integrations, className = "" }) {
-  const [collapsed, setCollapsed] = useState5(/* @__PURE__ */ new Set());
-  const [drag, setDrag] = useState5(null);
-  const [over, setOver] = useState5(null);
+var DEFAULT_FORMATS = ["components"];
+function DiscordMessageBuilder({ value: incoming, onChange, formats = DEFAULT_FORMATS, variables, syntax = PERCENT_PLACEHOLDERS, sampleOverrides, onUploadImage, onUploadFile, botName, botAvatar, watermark, integrations, className = "" }) {
+  const offered = formats.length > 0 ? formats : DEFAULT_FORMATS;
+  const value = useMemo(
+    () => offered.includes(messageFormat(incoming)) || !isBlankMessage(incoming) ? incoming : blankMessage(offered[0]),
+    [incoming, offered.join()]
+  );
+  const format = messageFormat(value);
+  const stash = useRef5({});
+  const switchable = FORMAT_OPTIONS.filter((o) => offered.includes(o.value) || o.value === format || stash.current[o.value]);
+  const switchFormat = (next) => {
+    if (next === format) return;
+    stash.current[format] = value;
+    onChange(stash.current[next] ?? blankMessage(next));
+  };
+  const [collapsed, setCollapsed] = useState7(/* @__PURE__ */ new Set());
+  const dragFor = useDragReorder();
   const compact = useIsCompact();
-  const [pane, setPane] = useState5("editor");
-  const [paletteOpen, setPaletteOpen] = useState5(false);
+  const [pane, setPane] = useState7("editor");
+  const [paletteOpen, setPaletteOpen] = useState7(false);
   const paletteApi = useMemo(() => ({ open: () => setPaletteOpen(true) }), []);
   const previewRef = useRef5(null);
   const previewMax = useVisibleHeight(previewRef, !compact);
@@ -2135,47 +2473,18 @@ function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PL
     };
   }
   function dragPropsFor(zone, id) {
-    const active = !!drag && drag.zone === zone && drag.id !== id;
-    return {
-      dragging: drag?.id === id,
-      overPos: over && over.zone === zone && over.id === id ? over.pos : null,
-      onDragStart: (e, cardEl) => {
-        setDrag({ zone, id });
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", id);
-        if (cardEl) e.dataTransfer.setDragImage(cardEl, 20, 16);
-      },
-      // Only show a drop marker while hovering; never reorder mid-drag.
-      onDragOver: (e) => {
-        if (!active) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        const rect = e.currentTarget.getBoundingClientRect();
-        const pos = e.clientY - rect.top < rect.height / 2 ? "before" : "after";
-        setOver((prev) => prev && prev.zone === zone && prev.id === id && prev.pos === pos ? prev : { zone, id, pos });
-      },
-      onDrop: (e) => {
-        e.preventDefault();
-        if (active && over && over.zone === zone && over.id === id) reorder(zone, drag.id, id, over.pos);
-        setDrag(null);
-        setOver(null);
-      },
-      onDragEnd: () => {
-        setDrag(null);
-        setOver(null);
-      }
-    };
+    return dragFor(zone, id, (fromId, toId, pos) => reorder(zone, fromId, toId, pos));
   }
   function renderBlock(node, zone) {
     const isCollapsed = collapsed.has(node.id);
-    const Icon = BLOCK_ICONS[node.type];
+    const Icon2 = BLOCK_ICONS[node.type];
     if (node.type === "container") {
       const container = node;
       const accent = hexOf(container.accentColor);
-      return /* @__PURE__ */ jsx12(
+      return /* @__PURE__ */ jsx13(
         BlockCard,
         {
-          icon: Icon,
+          icon: Icon2,
           title: BLOCK_LABELS.container,
           summary: summarize(node),
           accentDot: accent,
@@ -2186,21 +2495,21 @@ function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PL
           drag: dragPropsFor(zone, node.id),
           move: movePropsFor(zone, node.id),
           compact,
-          children: /* @__PURE__ */ jsxs12("div", { className: "space-y-3", children: [
-            /* @__PURE__ */ jsx12(ContainerProps, { node: container, onChange: (n) => updateNode(node.id, n) }),
-            /* @__PURE__ */ jsxs12("div", { className: "divide-y divide-border/40 rounded-md border border-border/50", children: [
-              container.children.length === 0 ? /* @__PURE__ */ jsx12("p", { className: "px-3 py-2 text-xs text-muted-foreground", children: "Empty container. Add a block below." }) : container.children.map((child) => renderBlock(child, container.id)),
-              /* @__PURE__ */ jsx12("div", { className: "px-3 py-2", children: /* @__PURE__ */ jsx12(AddComponentBar, { kinds: CHILD_BLOCK_KINDS, onAdd: (k) => addChild(container.id, k) }) })
+          children: /* @__PURE__ */ jsxs13("div", { className: "space-y-3", children: [
+            /* @__PURE__ */ jsx13(ContainerProps, { node: container, onChange: (n) => updateNode(node.id, n) }),
+            /* @__PURE__ */ jsxs13("div", { className: "divide-y divide-border/40 rounded-md border border-border/50", children: [
+              container.children.length === 0 ? /* @__PURE__ */ jsx13("p", { className: "px-3 py-2 text-xs text-muted-foreground", children: "Empty container. Add a block below." }) : container.children.map((child) => renderBlock(child, container.id)),
+              /* @__PURE__ */ jsx13("div", { className: "px-3 py-2", children: /* @__PURE__ */ jsx13(AddComponentBar, { kinds: CHILD_BLOCK_KINDS, onAdd: (k) => addChild(container.id, k) }) })
             ] })
           ] })
         },
         node.id
       );
     }
-    return /* @__PURE__ */ jsx12(
+    return /* @__PURE__ */ jsx13(
       BlockCard,
       {
-        icon: Icon,
+        icon: Icon2,
         title: BLOCK_LABELS[node.type],
         summary: summarize(node),
         collapsed: isCollapsed,
@@ -2209,7 +2518,7 @@ function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PL
         drag: dragPropsFor(zone, node.id),
         move: movePropsFor(zone, node.id),
         compact,
-        children: /* @__PURE__ */ jsx12(BlockBody, { node, onChange: (n) => updateNode(node.id, n), variables: allVariables, onUpload: onUploadImage, onUploadFile })
+        children: /* @__PURE__ */ jsx13(BlockBody, { node, onChange: (n) => updateNode(node.id, n), variables: allVariables, onUpload: onUploadImage, onUploadFile })
       },
       node.id
     );
@@ -2217,11 +2526,11 @@ function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PL
   const issues = validate(value);
   const errors = issues.filter((i) => i.level === "error");
   const warnings = issues.filter((i) => i.level === "warning");
-  const total = countComponents(value.components);
+  const usage = format === "embeds" ? { used: countEmbedChars(value.embeds ?? []), max: LIMITS.embedTotalChars, unit: "characters" } : { used: countComponents(value.components), max: LIMITS.totalComponents, unit: "components" };
   const showEditor = !compact || pane === "editor";
   const showPreview = !compact || pane === "preview";
-  return /* @__PURE__ */ jsx12(BuilderContext.Provider, { value: integrations ?? {}, children: /* @__PURE__ */ jsx12(SyntaxContext.Provider, { value: syntax, children: /* @__PURE__ */ jsx12(PaletteContext.Provider, { value: paletteApi, children: /* @__PURE__ */ jsxs12("div", { className, children: [
-    compact && /* @__PURE__ */ jsx12("div", { className: "mb-3 flex rounded-lg border border-border/60 bg-card p-1 text-sm", children: ["editor", "preview"].map((id) => /* @__PURE__ */ jsxs12(
+  return /* @__PURE__ */ jsx13(BuilderContext.Provider, { value: integrations ?? {}, children: /* @__PURE__ */ jsx13(SyntaxContext.Provider, { value: syntax, children: /* @__PURE__ */ jsx13(PaletteContext.Provider, { value: paletteApi, children: /* @__PURE__ */ jsxs13("div", { className, children: [
+    compact && /* @__PURE__ */ jsx13("div", { className: "mb-3 flex rounded-lg border border-border/60 bg-card p-1 text-sm", children: ["editor", "preview"].map((id) => /* @__PURE__ */ jsxs13(
       "button",
       {
         type: "button",
@@ -2230,53 +2539,57 @@ function DiscordMessageBuilder({ value, onChange, variables, syntax = PERCENT_PL
         className: `flex-1 rounded-md py-2 font-medium capitalize transition-colors ${pane === id ? "bg-dbx-accent-600 text-white" : "text-muted-foreground hover:text-foreground"}`,
         children: [
           id,
-          id === "preview" && errors.length > 0 && /* @__PURE__ */ jsx12("span", { className: `ml-1.5 rounded px-1.5 py-0.5 text-[11px] ${pane === id ? "bg-white/20" : "bg-red-500/15 text-red-400"}`, children: errors.length })
+          id === "preview" && errors.length > 0 && /* @__PURE__ */ jsx13("span", { className: `ml-1.5 rounded px-1.5 py-0.5 text-[11px] ${pane === id ? "bg-white/20" : "bg-red-500/15 text-red-400"}`, children: errors.length })
         ]
       },
       id
     )) }),
-    /* @__PURE__ */ jsxs12("div", { className: "grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]", children: [
-      /* @__PURE__ */ jsxs12("div", { className: showEditor ? "space-y-3" : "hidden", children: [
-        compact && paletteOpen && /* @__PURE__ */ jsx12(VariablePalette, { variables: allVariables, onClose: () => setPaletteOpen(false) }),
-        /* @__PURE__ */ jsxs12("div", { className: "divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60 bg-card", children: [
-          value.components.map((node) => renderBlock(node, ROOT_ZONE)),
-          value.components.length === 0 && /* @__PURE__ */ jsx12("p", { className: "px-4 py-6 text-center text-sm text-muted-foreground", children: "No blocks yet. Add one below." })
-        ] }),
-        /* @__PURE__ */ jsx12(AddComponentCards, { kinds: ROOT_BLOCK_KINDS, onAdd: addRoot })
+    /* @__PURE__ */ jsxs13("div", { className: "grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]", children: [
+      /* @__PURE__ */ jsxs13("div", { className: showEditor ? "space-y-3" : "hidden", children: [
+        compact && paletteOpen && /* @__PURE__ */ jsx13(VariablePalette, { variables: allVariables, onClose: () => setPaletteOpen(false) }),
+        switchable.length > 1 && /* @__PURE__ */ jsx13("div", { className: "w-fit", children: /* @__PURE__ */ jsx13(SegmentToggle, { options: switchable, value: format, onChange: switchFormat }) }),
+        format === "embeds" ? /* @__PURE__ */ jsx13(EmbedEditor, { model: value, onChange, variables: allVariables, onUploadImage, compact }) : /* @__PURE__ */ jsxs13(Fragment6, { children: [
+          /* @__PURE__ */ jsxs13("div", { className: "divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60 bg-card", children: [
+            value.components.map((node) => renderBlock(node, ROOT_ZONE)),
+            value.components.length === 0 && /* @__PURE__ */ jsx13("p", { className: "px-4 py-6 text-center text-sm text-muted-foreground", children: "No blocks yet. Add one below." })
+          ] }),
+          /* @__PURE__ */ jsx13(AddComponentCards, { kinds: ROOT_BLOCK_KINDS, onAdd: addRoot })
+        ] })
       ] }),
-      /* @__PURE__ */ jsxs12(
+      /* @__PURE__ */ jsxs13(
         "div",
         {
           ref: previewRef,
           style: previewMax ? { maxHeight: previewMax } : void 0,
           className: `space-y-2 lg:sticky lg:top-4 lg:self-start lg:overflow-y-auto lg:overscroll-contain ${showPreview ? "" : "hidden"}`,
           children: [
-            !compact && paletteOpen && /* @__PURE__ */ jsx12(VariablePalette, { variables: allVariables, onClose: () => setPaletteOpen(false) }),
-            /* @__PURE__ */ jsxs12("div", { className: "flex items-center justify-between", children: [
-              /* @__PURE__ */ jsx12("span", { className: "text-xs font-semibold uppercase tracking-wide text-muted-foreground", children: "Preview" }),
-              /* @__PURE__ */ jsxs12("span", { className: "flex items-center gap-3 text-xs text-muted-foreground", children: [
-                !paletteOpen && allVariables.length > 0 && /* @__PURE__ */ jsxs12("button", { type: "button", onClick: () => setPaletteOpen(true), className: "flex items-center gap-1 text-dbx-accent-300 hover:text-dbx-accent-200", children: [
-                  /* @__PURE__ */ jsx12(Percent2, { className: "h-3 w-3" }),
+            !compact && paletteOpen && /* @__PURE__ */ jsx13(VariablePalette, { variables: allVariables, onClose: () => setPaletteOpen(false) }),
+            /* @__PURE__ */ jsxs13("div", { className: "flex items-center justify-between", children: [
+              /* @__PURE__ */ jsx13("span", { className: "text-xs font-semibold uppercase tracking-wide text-muted-foreground", children: "Preview" }),
+              /* @__PURE__ */ jsxs13("span", { className: "flex items-center gap-3 text-xs text-muted-foreground", children: [
+                !paletteOpen && allVariables.length > 0 && /* @__PURE__ */ jsxs13("button", { type: "button", onClick: () => setPaletteOpen(true), className: "flex items-center gap-1 text-dbx-accent-300 hover:text-dbx-accent-200", children: [
+                  /* @__PURE__ */ jsx13(Percent2, { className: "h-3 w-3" }),
                   " Variables"
                 ] }),
-                /* @__PURE__ */ jsxs12("span", { className: total > LIMITS.totalComponents ? "text-red-400" : "", children: [
-                  total,
+                /* @__PURE__ */ jsxs13("span", { className: usage.used > usage.max ? "text-red-400" : "", children: [
+                  usage.used,
                   " / ",
-                  LIMITS.totalComponents,
-                  " components"
+                  usage.max,
+                  " ",
+                  usage.unit
                 ] })
               ] })
             ] }),
-            /* @__PURE__ */ jsx12(DiscordPreview, { model: value, variables: allVariables, syntax, mentions: previewMentions, botName, botAvatar, watermark }),
-            /* @__PURE__ */ jsx12("p", { className: "text-[11px] leading-snug text-muted-foreground/70", children: "Discord may show the message slightly differently on some devices." }),
-            (errors.length > 0 || warnings.length > 0) && /* @__PURE__ */ jsxs12("div", { className: "space-y-1 rounded-lg border border-border/50 bg-card p-2 text-xs", children: [
-              errors.map((e, i) => /* @__PURE__ */ jsxs12("div", { className: "text-red-400", children: [
+            /* @__PURE__ */ jsx13(DiscordPreview, { model: value, variables: allVariables, syntax, mentions: previewMentions, botName, botAvatar, watermark }),
+            /* @__PURE__ */ jsx13("p", { className: "text-[11px] leading-snug text-muted-foreground/70", children: "Discord may show the message slightly differently on some devices." }),
+            (errors.length > 0 || warnings.length > 0) && /* @__PURE__ */ jsxs13("div", { className: "space-y-1 rounded-lg border border-border/50 bg-card p-2 text-xs", children: [
+              errors.map((e, i) => /* @__PURE__ */ jsxs13("div", { className: "text-red-400", children: [
                 "\u25CF ",
                 e.path,
                 ": ",
                 e.message
               ] }, `e${i}`)),
-              warnings.map((w, i) => /* @__PURE__ */ jsxs12("div", { className: "text-amber-400", children: [
+              warnings.map((w, i) => /* @__PURE__ */ jsxs13("div", { className: "text-amber-400", children: [
                 "\u25CF ",
                 w.path,
                 ": ",

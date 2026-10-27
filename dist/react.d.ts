@@ -1,7 +1,7 @@
 import * as react from 'react';
 import react__default, { ReactNode, ButtonHTMLAttributes, InputHTMLAttributes, TextareaHTMLAttributes, ComponentType } from 'react';
-import { ButtonActionData, TemplateVariable, MessageModel, PlaceholderSyntax } from './core.js';
-export { ButtonAction, ButtonActionType, ButtonNode, CLICKER_VARIABLES, ContainerChild, ContainerNode, DISCORD_VARIABLES, EmbedAuthor, EmbedField, EmbedFooter, EmbedNode, IS_COMPONENTS_V2, LIMITS, MessageFormat, PERCENT_PLACEHOLDERS, RootNode, SerializedMessage, ValidationIssue, applyVariableSamples, countEmbedChars, deserialize, emptyEmbedMessage, emptyMessage, isEmptyEmbed, makeBlock, makeContainer, makeEmbed, makeEmbedField, mergeVariables, messageFormat, serialize, serializeJson, startingMessage, substituteVariables, validate, variablePattern, wrapVariable } from './core.js';
+import { ButtonActionData, TemplateVariable, MessageModel, PlaceholderSyntax, MessageFormat } from './core.js';
+export { ButtonAction, ButtonActionType, ButtonNode, CLICKER_VARIABLES, ContainerChild, ContainerNode, DISCORD_VARIABLES, EmbedAuthor, EmbedField, EmbedFooter, EmbedNode, IS_COMPONENTS_V2, LIMITS, PERCENT_PLACEHOLDERS, RootNode, SerializedMessage, ValidationIssue, applyVariableSamples, countEmbedChars, deserialize, emptyEmbedMessage, emptyMessage, isEmptyEmbed, makeBlock, makeContainer, makeEmbed, makeEmbedField, mergeVariables, messageFormat, serialize, serializeJson, startingMessage, substituteVariables, validate, variablePattern, wrapVariable } from './core.js';
 
 /** Uploads an image and resolves to its public URL. Injected by the host app. */
 type UploadImageFn = (file: File) => Promise<string>;
@@ -139,6 +139,10 @@ declare const SyntaxContext: react.Context<PlaceholderSyntax>;
 interface DiscordMessageBuilderProps {
     value: MessageModel;
     onChange: (model: MessageModel) => void;
+    /** What the editor offers: Components V2 blocks, classic embeds, or both
+     *  with a switch. Defaults to components only. A stored message in a
+     *  format left out here still opens, in its own format. */
+    formats?: MessageFormat[];
     variables?: TemplateVariable[];
     /** How a variable is written in a text; defaults to %name%. */
     syntax?: PlaceholderSyntax;
@@ -158,7 +162,7 @@ interface DiscordMessageBuilderProps {
     integrations?: BuilderIntegrations;
     className?: string;
 }
-declare function DiscordMessageBuilder({ value, onChange, variables, syntax, sampleOverrides, onUploadImage, onUploadFile, botName, botAvatar, watermark, integrations, className }: DiscordMessageBuilderProps): react.JSX.Element;
+declare function DiscordMessageBuilder({ value: incoming, onChange, formats, variables, syntax, sampleOverrides, onUploadImage, onUploadFile, botName, botAvatar, watermark, integrations, className }: DiscordMessageBuilderProps): react.JSX.Element;
 
 type VarMap = Record<string, string>;
 /**
@@ -204,4 +208,4 @@ declare function DiscordPreview({ model, variables, mentions, botName, botAvatar
     className?: string;
 }): react.JSX.Element;
 
-export { type ActionEditorProps, BuilderContext, type BuilderIntegrations, Button, ButtonActionData, type ChannelLite, DiscordActionEditor, DiscordMessageBuilder, type DiscordMessageBuilderProps, DiscordPreview, EmojiGrid, type EmojiLite, Input, Markdown, type MediaAsset, type MediaLibrary, type Mentions, MessageComponents, MessageModel, Modal, type ModalProps, PlaceholderSyntax, Popover, type PreviewVars, type SavedButtonAction, Skeleton, Switch, SyntaxContext, TemplateVariable, Textarea, type UploadFileFn, type UploadImageFn, type UserLite, previewVars, variablesToMap };
+export { type ActionEditorProps, BuilderContext, type BuilderIntegrations, Button, ButtonActionData, type ChannelLite, DiscordActionEditor, DiscordMessageBuilder, type DiscordMessageBuilderProps, DiscordPreview, EmojiGrid, type EmojiLite, Input, Markdown, type MediaAsset, type MediaLibrary, type Mentions, MessageComponents, MessageFormat, MessageModel, Modal, type ModalProps, PlaceholderSyntax, Popover, type PreviewVars, type SavedButtonAction, Skeleton, Switch, SyntaxContext, TemplateVariable, Textarea, type UploadFileFn, type UploadImageFn, type UserLite, previewVars, variablesToMap };
