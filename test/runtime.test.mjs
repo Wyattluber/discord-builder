@@ -52,6 +52,10 @@ test("send and edit post a Components V2 body to the right route", async () => {
   assert.deepEqual(calls[0][2].body.attachments, [{ id: 0, filename: "a.png" }]);
   assert.deepEqual(calls[0][2].body.allowed_mentions, { parse: [] });
   assert.equal(calls[1][1], "/channels/10/messages/20");
+  // An edit may turn a classic message into V2: its text and embeds are emptied
+  assert.equal(calls[1][2].body.content, null);
+  assert.deepEqual(calls[1][2].body.embeds, []);
+  assert.ok(!("content" in calls[0][2].body), "a new message sends no empty text");
 });
 
 const recorder = () => {

@@ -20,7 +20,7 @@ dashboard without a bot does not pull anything it cannot use:
 Releases are git tags; `dist/` is committed, so nothing is built on install.
 
 ```sh
-npm install github:Wyattluber/discord-builder#v1.5.0
+npm install github:Wyattluber/discord-builder#v1.5.1
 ```
 
 ## In a dashboard
@@ -139,6 +139,10 @@ and `editPreparedMessage(client, channelId, messageId, prepared, options?)`
 send either format: the V2 flag for Components V2, `content` and `embeds`
 otherwise. `options.files` and `options.allowedMentions` replace the payload's
 own. An edit always writes `content`, so text the old message had is cleared.
+An edit can turn a classic message into Components V2 (its text and embeds
+are emptied in the same request), but not back: Discord never takes the V2
+flag off a message, so going from Components V2 to embeds means sending a new
+message.
 `sendComponentsMessage` and `editComponentsMessage` still send Components V2 as
 before.
 

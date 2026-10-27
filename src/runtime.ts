@@ -263,12 +263,19 @@ function cleanEmbeds(embeds: Json[], syntax: PlaceholderSyntax = PERCENT_PLACEHO
   });
 }
 
-function restBody(components: unknown[], files: MessageFile[], allowedMentions?: AllowedMentions) {
+// An edit may turn a classic message into Components V2; Discord then wants
+// its text and embeds emptied in the same request, or answers 400. The
+// other way does not exist: the flag cannot be taken off a message again.
+function restBody(components: unknown[], files: MessageFile[], allowedMentions?: AllowedMentions, edit = false) {
   const body: Record<string, unknown> = {
     flags: COMPONENTS_V2_FLAG,
     components,
     allowed_mentions: allowedMentions ?? { parse: [] },
   };
+  if (edit) {
+    body.content = null;
+    body.embeds = [];
+  }
   if (files.length > 0) {
     body.attachments = files.map((f, i) => ({ id: i, filename: f.name }));
   }
@@ -288,7 +295,7 @@ export async function sendComponentsMessage(client: RestClient, channelId: strin
 export async function editComponentsMessage(client: RestClient, channelId: string, messageId: string, components: unknown[], options: SendOptions = {}) {
   const files = options.files ?? [];
   return client.rest.patch(`/channels/${channelId}/messages/${messageId}`, {
-    body: restBody(components, files, options.allowedMentions),
+    body: restBody(components, files, options.allowedMentions, true),
     files,
   });
 }
@@ -299,7 +306,7 @@ export async function editComponentsMessage(client: RestClient, channelId: strin
  * message had and the new one lacks is cleared instead of kept.
  */
 function preparedBody(prepared: PreparedPayload, files: MessageFile[], allowedMentions: AllowedMentions | undefined, edit: boolean) {
-  if (prepared.componentsV2) return restBody(prepared.components, files, allowedMentions);
+  if (prepared.componentsV2) return restBody(prepared.components, files, allowedMentions, edit);
   const body: Record<string, unknown> = {
     embeds: prepared.embeds,
     components: prepared.components,
@@ -325,7 +332,12 @@ export async function sendPreparedMessage(client: RestClient, channelId: string,
   });
 }
 
-/** Edits an existing message with what preparePayload returned, via raw REST. */
+/**
+ * Edits an existing message with what preparePayload returned, via raw REST.
+ * A classic message can become Components V2 this way; a Components V2
+ * message cannot become classic embeds (Discord answers 400), so a host
+ * switching that way sends a new message instead.
+ */
 export async function editPreparedMessage(client: RestClient, channelId: string, messageId: string, prepared: PreparedPayload, options: SendOptions = {}) {
   const files = options.files ?? prepared.files ?? [];
   return client.rest.patch(`/channels/${channelId}/messages/${messageId}`, {

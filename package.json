@@ -1,6 +1,6 @@
 {
   "name": "@wyattluber/discord-builder",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "A Discord message builder for Components V2 and classic embeds: a React editor with live preview, the pure model and serializer, and a Node renderer for stored payloads.",
   "type": "module",
   "sideEffects": [

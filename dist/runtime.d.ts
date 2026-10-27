@@ -79,7 +79,12 @@ declare function editComponentsMessage(client: RestClient, channelId: string, me
  * Returns the raw message data.
  */
 declare function sendPreparedMessage(client: RestClient, channelId: string, prepared: PreparedPayload, options?: SendOptions): Promise<unknown>;
-/** Edits an existing message with what preparePayload returned, via raw REST. */
+/**
+ * Edits an existing message with what preparePayload returned, via raw REST.
+ * A classic message can become Components V2 this way; a Components V2
+ * message cannot become classic embeds (Discord answers 400), so a host
+ * switching that way sends a new message instead.
+ */
 declare function editPreparedMessage(client: RestClient, channelId: string, messageId: string, prepared: PreparedPayload, options?: SendOptions): Promise<unknown>;
 /**
  * Mentions the author wrote into the template themselves may ping; text

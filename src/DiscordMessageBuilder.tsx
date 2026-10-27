@@ -40,9 +40,10 @@ import type { ContainerChild, ContainerNode, MessageFormat, MessageModel, RootNo
 
 const ROOT_ZONE = "root";
 
+// Embed first: the familiar kind, the one most people start from
 const FORMAT_OPTIONS: { value: MessageFormat; label: string }[] = [
-  { value: "components", label: "Components" },
   { value: "embeds", label: "Embed" },
+  { value: "components", label: "Components" },
 ];
 
 function blankMessage(format: MessageFormat): MessageModel {

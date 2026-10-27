@@ -2347,8 +2347,8 @@ function useVisibleHeight(ref, enabled, inset = 32) {
 import { Fragment as Fragment6, jsx as jsx13, jsxs as jsxs13 } from "react/jsx-runtime";
 var ROOT_ZONE = "root";
 var FORMAT_OPTIONS = [
-  { value: "components", label: "Components" },
-  { value: "embeds", label: "Embed" }
+  { value: "embeds", label: "Embed" },
+  { value: "components", label: "Components" }
 ];
 function blankMessage(format) {
   return format === "embeds" ? emptyEmbedMessage() : startingMessage();

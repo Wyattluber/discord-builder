@@ -134,12 +134,16 @@ function cleanEmbeds(embeds, syntax = PERCENT_PLACEHOLDERS) {
     return ["title", "description", "fields", "image", "thumbnail", "author", "footer"].some((key) => key in embed);
   });
 }
-function restBody(components, files, allowedMentions) {
+function restBody(components, files, allowedMentions, edit = false) {
   const body = {
     flags: COMPONENTS_V2_FLAG,
     components,
     allowed_mentions: allowedMentions ?? { parse: [] }
   };
+  if (edit) {
+    body.content = null;
+    body.embeds = [];
+  }
   if (files.length > 0) {
     body.attachments = files.map((f, i) => ({ id: i, filename: f.name }));
   }
@@ -155,12 +159,12 @@ async function sendComponentsMessage(client, channelId, components, options = {}
 async function editComponentsMessage(client, channelId, messageId, components, options = {}) {
   const files = options.files ?? [];
   return client.rest.patch(`/channels/${channelId}/messages/${messageId}`, {
-    body: restBody(components, files, options.allowedMentions),
+    body: restBody(components, files, options.allowedMentions, true),
     files
   });
 }
 function preparedBody(prepared, files, allowedMentions, edit) {
-  if (prepared.componentsV2) return restBody(prepared.components, files, allowedMentions);
+  if (prepared.componentsV2) return restBody(prepared.components, files, allowedMentions, edit);
   const body = {
     embeds: prepared.embeds,
     components: prepared.components,
