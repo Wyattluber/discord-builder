@@ -1,9 +1,9 @@
 # discord-builder
 
-A Discord Components V2 message editor with a live preview, the model and
-serializer behind it, and the Node side that sends a stored payload. One copy
-for every project that builds Discord messages, so a change made here reaches
-all of them.
+A Discord message editor with a live preview, for Components V2 and for
+classic embeds, the model and serializer behind it, and the Node side that
+sends a stored payload. One copy for every project that builds Discord
+messages, so a change made here reaches all of them.
 
 Three entry points, so a bot without a dashboard does not pull React and a
 dashboard without a bot does not pull anything it cannot use:
@@ -20,7 +20,7 @@ dashboard without a bot does not pull anything it cannot use:
 Releases are git tags; `dist/` is committed, so nothing is built on install.
 
 ```sh
-npm install github:Wyattluber/discord-builder#v1.2.0
+npm install github:Wyattluber/discord-builder#v1.5.0
 ```
 
 ## In a dashboard
@@ -74,21 +74,79 @@ such field. `DiscordActionEditor` offers reply / DM / post to a channel; a host
 with other actions passes its own editor, and one whose bot answers no clicks
 passes `actionEditor: null`, so a button offers only its custom ID.
 
+## Components V2 or embeds
+
+Discord takes a message as Components V2 or as a classic message (text, up to
+10 embeds and the action rows under them), never both at once. Each host
+decides what its builder offers with `formats`:
+
+```tsx
+<DiscordMessageBuilder value={model} onChange={setModel} />                                   // Components V2, as before
+<DiscordMessageBuilder value={model} onChange={setModel} formats={["embeds"]} />              // embeds only
+<DiscordMessageBuilder value={model} onChange={setModel} formats={["components", "embeds"]} /> // both, with a switch
+```
+
+With both, the switch keeps the other format's message while the editor is
+open, but only the active one reaches `onChange`. A stored message in a format
+the host leaves out still opens, in its own format. A blank starter
+(`startingMessage()`) opens in the first format offered; `emptyEmbedMessage()`
+is the embed starter.
+
+In the model, `format: "embeds"` carries `content`, `embeds` and `components`
+(action rows only); a model without `format` is Components V2. `serialize`
+writes, and `deserialize` and the runtime read:
+
+```jsonc
+// Components V2, byte for byte as before
+{ "flags": 32768, "components": [ ... ] }
+
+// Classic: an embeds array is what marks it
+{
+  "content": "Hello %user%",                       // left out when empty
+  "embeds": [{
+    "author": { "name": "Support", "url": "https://…", "icon_url": "https://…" },
+    "title": "Welcome", "url": "https://…", "description": "Read **the rules**.",
+    "fields": [{ "name": "Members", "value": "%memberCount%", "inline": true }],
+    "image": { "url": "https://…" }, "thumbnail": { "url": "%guildIcon%" },
+    "footer": { "text": "Thanks", "icon_url": "https://…" },
+    "timestamp": "now",                            // the send time, filled in by the runtime
+    "color": 5793266
+  }],
+  "components": [{ "type": 1, "components": [ ... ] }]
+}
+```
+
+Only what is set is written. Store the whole result of `serialize`: a host
+that keeps only `.components` loses the text and the embeds. `validate` checks
+Discord's limits for both formats (`LIMITS`: 10 embeds, 6000 characters across
+them, 25 fields, the per-part lengths, 2000 for the text, 5 action rows).
+
 ## In a bot
 
 ```js
-import { preparedOrNull, sendComponentsMessage } from "@wyattluber/discord-builder/runtime";
-// or: const { preparedOrNull, sendComponentsMessage } = require("@wyattluber/discord-builder/runtime");
+import { preparedOrNull, sendPreparedMessage } from "@wyattluber/discord-builder/runtime";
+// or: const { preparedOrNull, sendPreparedMessage } = require("@wyattluber/discord-builder/runtime");
 
 const media = { match: /\/public\/builder-media\/(\w+)/, load: (id) => db.getMedia(id) };
 const prepared = preparedOrNull(row.payload, { user: member.displayName }, { media, label: "welcome" });
-if (prepared) {
-  await sendComponentsMessage(client, channelId, prepared.components, {
-    files: prepared.files,
-    allowedMentions: prepared.allowedMentions,
-  });
-}
+if (prepared) await sendPreparedMessage(client, channelId, prepared);
 ```
+
+`preparePayload` and `preparedOrNull` return `{ components, embeds, content,
+componentsV2, files, allowedMentions }`; `preparedOrNull` is null when there is
+nothing to send. `sendPreparedMessage(client, channelId, prepared, options?)`
+and `editPreparedMessage(client, channelId, messageId, prepared, options?)`
+send either format: the V2 flag for Components V2, `content` and `embeds`
+otherwise. `options.files` and `options.allowedMentions` replace the payload's
+own. An edit always writes `content`, so text the old message had is cleared.
+`sendComponentsMessage` and `editComponentsMessage` still send Components V2 as
+before.
+
+After the variables are filled in, an embed drops a field with a blank name or
+value, a URL that did not resolve, an author or footer left without text, and
+goes when nothing is left; `"timestamp": "now"` becomes the current time.
+Embed images and the author and footer icons resolve to attachments like any
+other media.
 
 `client` is anything with a discord.js-style `rest.post` and `rest.patch`; a
 discord.js client works as it is. Mentions only ping when they were written in
