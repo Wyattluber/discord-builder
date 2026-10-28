@@ -192,7 +192,10 @@ function Icon({ url, size }: { url: string; size: string }) {
     : <span className={`${size} shrink-0 rounded-full bg-black/30`} />;
 }
 
-function Embed({ embed: e, vars }: { embed: EmbedNode; vars: PreviewVars }) {
+/** The host's footnote as a footer shows it: no small-text mark, a link as its words. */
+const footnoteWords = (footnote: string) => footnote.replace(/^-#\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
+
+function Embed({ embed: e, vars, footnote }: { embed: EmbedNode; vars: PreviewVars; footnote?: string | null }) {
   const mentions = useContext(MentionsCtx);
   const titleUrl = resolveUrl(e.url, vars);
   const authorUrl = resolveUrl(e.author.url, vars);
@@ -200,6 +203,8 @@ function Embed({ embed: e, vars }: { embed: EmbedNode; vars: PreviewVars }) {
   const thumb = resolveUrl(e.thumbnailUrl, vars);
   const fields = e.fields.filter((f) => f.name.trim() || f.value.trim());
   const footer = e.footer.text.trim();
+  // The host's footnote sits in the last embed's footer, after its own words
+  const note = footnote ? footnoteWords(footnote) : "";
   const authorName = <>{renderInline(e.author.name, vars, `au${e.id}`, mentions)}</>;
   const title = <>{renderInline(e.title, vars, `ti${e.id}`, mentions)}</>;
 
@@ -255,12 +260,14 @@ function Embed({ embed: e, vars }: { embed: EmbedNode; vars: PreviewVars }) {
             ? <img src={image} alt="" className="mt-3 max-h-72 max-w-full rounded object-contain" />
             : <div className="mt-3 flex h-24 items-center justify-center rounded bg-black/30 text-xs text-muted-foreground">image</div>
         )}
-        {(footer || e.timestamp) && (
+        {(footer || note || e.timestamp) && (
           <div className="mt-2 flex items-center gap-2 text-[11px] font-medium text-[#dbdee1]">
             {footer && e.footer.iconUrl.trim() && <Icon url={resolveUrl(e.footer.iconUrl, vars)} size="h-5 w-5" />}
             <span className="min-w-0 break-words">
               {footer && renderInline(e.footer.text, vars, `ft${e.id}`, mentions)}
-              {footer && e.timestamp && <span className="mx-1">•</span>}
+              {footer && note && " · "}
+              {note}
+              {(footer || note) && e.timestamp && <span className="mx-1">•</span>}
               {e.timestamp && `Today at ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
             </span>
           </div>
@@ -287,9 +294,9 @@ function EmbedMessage({ model, vars, footnote }: { model: MessageModel; vars: Pr
           <Markdown text={content} vars={vars} mentions={mentions} />
         </div>
       )}
-      {embeds.map((e) => <Embed key={e.id} embed={e} vars={vars} />)}
+      {embeds.map((e, i) => <Embed key={e.id} embed={e} vars={vars} footnote={i === embeds.length - 1 ? footnote : null} />)}
       {rows.map((row) => <Child key={row.id} node={row} vars={vars} />)}
-      {footnote && <div className="text-xs text-[#949ba4]">{renderInline(footnote.replace(/^-# /, ""), vars, "fn")}</div>}
+      {footnote && embeds.length === 0 && <div className="text-xs text-[#949ba4]">{renderInline(footnote.replace(/^-# /, ""), vars, "fn")}</div>}
     </div>
   );
 }

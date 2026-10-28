@@ -20,7 +20,7 @@ dashboard without a bot does not pull anything it cannot use:
 Releases are git tags; `dist/` is committed, so nothing is built on install.
 
 ```sh
-npm install github:Wyattluber/discord-builder#v1.5.1
+npm install github:Wyattluber/discord-builder#v1.5.2
 ```
 
 ## In a dashboard

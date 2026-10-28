@@ -1954,7 +1954,8 @@ function fieldRows(fields) {
 function Icon({ url, size }) {
   return isHttp(url) ? /* @__PURE__ */ jsx11("img", { src: url, alt: "", className: `${size} shrink-0 rounded-full object-cover` }) : /* @__PURE__ */ jsx11("span", { className: `${size} shrink-0 rounded-full bg-black/30` });
 }
-function Embed({ embed: e, vars }) {
+var footnoteWords = (footnote) => footnote.replace(/^-#\s*/, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
+function Embed({ embed: e, vars, footnote }) {
   const mentions = useContext2(MentionsCtx);
   const titleUrl = resolveUrl(e.url, vars);
   const authorUrl = resolveUrl(e.author.url, vars);
@@ -1962,6 +1963,7 @@ function Embed({ embed: e, vars }) {
   const thumb = resolveUrl(e.thumbnailUrl, vars);
   const fields = e.fields.filter((f) => f.name.trim() || f.value.trim());
   const footer = e.footer.text.trim();
+  const note = footnote ? footnoteWords(footnote) : "";
   const authorName = /* @__PURE__ */ jsx11(Fragment5, { children: renderInline(e.author.name, vars, `au${e.id}`, mentions) });
   const title = /* @__PURE__ */ jsx11(Fragment5, { children: renderInline(e.title, vars, `ti${e.id}`, mentions) });
   return /* @__PURE__ */ jsxs11("div", { className: "flex max-w-[520px] overflow-hidden rounded-[4px] bg-[#2b2d31]", children: [
@@ -1983,11 +1985,13 @@ function Embed({ embed: e, vars }) {
         e.thumbnailUrl.trim() && (isHttp(thumb) ? /* @__PURE__ */ jsx11("img", { src: thumb, alt: "", className: "h-20 w-20 shrink-0 rounded object-cover" }) : /* @__PURE__ */ jsx11("div", { className: "flex h-20 w-20 shrink-0 items-center justify-center rounded bg-black/30 text-[10px] text-muted-foreground", children: "thumb" }))
       ] }),
       e.imageUrl.trim() && (isHttp(image) ? /* @__PURE__ */ jsx11("img", { src: image, alt: "", className: "mt-3 max-h-72 max-w-full rounded object-contain" }) : /* @__PURE__ */ jsx11("div", { className: "mt-3 flex h-24 items-center justify-center rounded bg-black/30 text-xs text-muted-foreground", children: "image" })),
-      (footer || e.timestamp) && /* @__PURE__ */ jsxs11("div", { className: "mt-2 flex items-center gap-2 text-[11px] font-medium text-[#dbdee1]", children: [
+      (footer || note || e.timestamp) && /* @__PURE__ */ jsxs11("div", { className: "mt-2 flex items-center gap-2 text-[11px] font-medium text-[#dbdee1]", children: [
         footer && e.footer.iconUrl.trim() && /* @__PURE__ */ jsx11(Icon, { url: resolveUrl(e.footer.iconUrl, vars), size: "h-5 w-5" }),
         /* @__PURE__ */ jsxs11("span", { className: "min-w-0 break-words", children: [
           footer && renderInline(e.footer.text, vars, `ft${e.id}`, mentions),
-          footer && e.timestamp && /* @__PURE__ */ jsx11("span", { className: "mx-1", children: "\u2022" }),
+          footer && note && " \xB7 ",
+          note,
+          (footer || note) && e.timestamp && /* @__PURE__ */ jsx11("span", { className: "mx-1", children: "\u2022" }),
           e.timestamp && `Today at ${(/* @__PURE__ */ new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
         ] })
       ] }),
@@ -2003,9 +2007,9 @@ function EmbedMessage({ model, vars, footnote }) {
   return /* @__PURE__ */ jsxs11("div", { className: "space-y-2", children: [
     !content.trim() && embeds.length === 0 && rows.length === 0 && /* @__PURE__ */ jsx11("div", { className: "text-sm text-muted-foreground", children: "Empty message" }),
     content.trim() && /* @__PURE__ */ jsx11("div", { className: "text-sm text-[#dbdee1]", children: /* @__PURE__ */ jsx11(Markdown, { text: content, vars, mentions }) }),
-    embeds.map((e) => /* @__PURE__ */ jsx11(Embed, { embed: e, vars }, e.id)),
+    embeds.map((e, i) => /* @__PURE__ */ jsx11(Embed, { embed: e, vars, footnote: i === embeds.length - 1 ? footnote : null }, e.id)),
     rows.map((row) => /* @__PURE__ */ jsx11(Child, { node: row, vars }, row.id)),
-    footnote && /* @__PURE__ */ jsx11("div", { className: "text-xs text-[#949ba4]", children: renderInline(footnote.replace(/^-# /, ""), vars, "fn") })
+    footnote && embeds.length === 0 && /* @__PURE__ */ jsx11("div", { className: "text-xs text-[#949ba4]", children: renderInline(footnote.replace(/^-# /, ""), vars, "fn") })
   ] });
 }
 function MessageComponents({ model, variables, mentions, syntax = PERCENT_PLACEHOLDERS }) {
